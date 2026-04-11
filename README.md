@@ -3,82 +3,86 @@
 </p>
 
 <p align="left">
-    <!-- Infraestructura y herramientas base -->
-    <a href="https://cloud.google.com" target="_blank">
-    <img src="https://img.shields.io/badge/-Google%20Cloud%20Platform-4285F4?style=flat-square&logo=google%20cloud&logoColor=white" />
-    </a>
-    <a href="https://hub.docker.com/r/google/cloud-sdk" target="_blank">
-        <img src="https://img.shields.io/badge/docker-%230db7ed.svg?style=flat-square&logo=docker&logoColor=white" />
-    </a>
-    <a href="https://code.visualstudio.com/download" target="_blank">
-    <img src="https://img.shields.io/badge/Visual%20Studio%20Code-007ACC?style=flat-square&logo=visualstudiocode&logoColor=fff" />
-    </a>
-    <!-- Testing y automatización -->
-  <a href="https://docs.pytest.org/en/stable/" target="_blank">
-    <img src="https://img.shields.io/badge/pytest-0A9EDC?style=flat-square&logo=pytest&logoColor=white" />
+
+  <!-- ☁️ CLOUD & INFRASTRUCTURE -->
+  <a href="https://cloud.google.com" target="_blank">
+    <img src="https://img.shields.io/badge/Google%20Cloud%20Platform-4285F4?style=flat-square&logo=googlecloud&logoColor=white" />
   </a>
-  <a href="https://tox.wiki/en/latest/" target="_blank">
-    <img src="https://img.shields.io/badge/tox-20C997?style=flat-square&logo=tox&logoColor=white" />
+  <a href="https://cloud.google.com/bigquery" target="_blank">
+    <img src="https://img.shields.io/badge/BigQuery-Analytics-669DF6?style=flat-square&logo=googlecloud&logoColor=white" />
   </a>
-    <!-- API y backend -->
+  <a href="https://hub.docker.com/r/google/cloud-sdk" target="_blank">
+    <img src="https://img.shields.io/badge/Docker-0db7ed?style=flat-square&logo=docker&logoColor=white" />
+  </a>
+  <!-- 🤖 AI / RAG STACK -->
+  <a href="https://cloud.google.com/vertex-ai/docs/generative-ai" target="_blank">
+    <img src="https://img.shields.io/badge/RAG-Enabled-34A853?style=flat-square&logo=google&logoColor=white" />
+  </a>
+  <a href="https://ai.google.dev/" target="_blank">
+    <img src="https://img.shields.io/badge/Gemini-LLM%20API-4285F4?style=flat-square&logo=google&logoColor=white" />
+  </a>
+  <a href="https://faiss.ai/" target="_blank">
+    <img src="https://img.shields.io/badge/FAISS-Vector%20Search-009688?style=flat-square" />
+  </a>
+  <!-- 🧠 DATA & ML -->
+  <a href="https://pandas.pydata.org/" target="_blank">
+    <img src="https://img.shields.io/badge/pandas-150458?style=flat-square&logo=pandas&logoColor=white" />
+  </a>
+  <a href="https://numpy.org/" target="_blank">
+    <img src="https://img.shields.io/badge/numpy-013243?style=flat-square&logo=numpy&logoColor=white" />
+  </a>
+  <!-- ⚙️ BACKEND -->
   <a href="https://fastapi.tiangolo.com/" target="_blank">
     <img src="https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white" />
   </a>
   <a href="https://www.uvicorn.org/" target="_blank">
-    <img src="https://img.shields.io/badge/Uvicorn-111827?style=flat-square&logo=uvicorn&logoColor=white" />
+    <img src="https://img.shields.io/badge/Uvicorn-111827?style=flat-square" />
   </a>
   <a href="https://pydantic.dev/" target="_blank">
-    <img src="https://img.shields.io/badge/Pydantic-E92063?style=flat-square&logo=pydantic&logoColor=white" />
-  </a>
-  <a href="https://github.com/Delgan/loguru" target="_blank">
-    <img src="https://img.shields.io/badge/Loguru-EE4C2C?style=flat-square&logo=loguru&logoColor=white" />
-  </a>
-  <a href="https://docs.python.org/3/library/typing.html" target="_blank">
-    <img src="https://img.shields.io/badge/typing_extensions-3776AB?style=flat-square&logo=python&logoColor=white" />
+    <img src="https://img.shields.io/badge/Pydantic-E92063?style=flat-square" />
   </a>
   <a href="https://pypi.org/project/python-multipart/" target="_blank">
     <img src="https://img.shields.io/badge/python--multipart-2C5BB4?style=flat-square&logo=python&logoColor=white" />
   </a>
-    <!-- Lenguaje y librerías de ML -->
-    <a href="https://peps.python.org/pep-0596/#schedule-first-bugfix-release" target="_blank">
-        <img src="https://img.shields.io/badge/python-3670A0?style=flat-square&logo=python&logoColor=ffdd54" />
-    </a>
-    </a>
-    <a href="https://pandas.pydata.org/" target="_blank">
-        <img src="https://img.shields.io/badge/pandas-150458?style=flat-square&logo=pandas&logoColor=white" />
-    </a>
-    <a href="https://numpy.org/" target="_blank">
-        <img src="https://img.shields.io/badge/numpy-013243?style=flat-square&logo=numpy&logoColor=white" />
-    </a>
-    <!-- RAG / AI -->
-<a href="https://cloud.google.com/vertex-ai/docs/generative-ai" target="_blank">
-  <img src="https://img.shields.io/badge/RAG-Enabled-34A853?style=flat-square&logo=google&logoColor=white" />
-</a>
-<a href="https://ai.google.dev/" target="_blank">
-  <img src="https://img.shields.io/badge/Gemini-LLM%20API-4285F4?style=flat-square&logo=google&logoColor=white" />
-</a>
-<a href="https://faiss.ai/" target="_blank">
-  <img src="https://img.shields.io/badge/FAISS-Vector%20Search-009688?style=flat-square" />
-</a>
-<a href="https://streamlit.io/" target="_blank">
-  <img src="https://img.shields.io/badge/Streamlit-Frontend-FF4B4B?style=flat-square&logo=streamlit&logoColor=white" />
-</a>
-<a href="https://cloud.google.com/bigquery" target="_blank">
-  <img src="https://img.shields.io/badge/BigQuery-Analytics-669DF6?style=flat-square&logo=googlecloud&logoColor=white" />
-</a>
-    <!-- CI/CD e infraestructura -->
-  <a href="https://yaml.org/" target="_blank">
-    <img src="https://img.shields.io/badge/YAML-CB171E?style=flat-square&logo=yaml&logoColor=white" />
+  <!-- 🎨 FRONTEND -->
+  <a href="https://streamlit.io/" target="_blank">
+    <img src="https://img.shields.io/badge/Streamlit-Frontend-FF4B4B?style=flat-square&logo=streamlit&logoColor=white" />
   </a>
-  <a href="https://www.json.org/json-en.html" target="_blank">
-    <img src="https://img.shields.io/badge/json-5E5C5C?style=flat-square&logo=json&logoColor=white" />
+  <!-- 🧪 TESTING -->
+  <a href="https://docs.pytest.org/en/stable/" target="_blank">
+    <img src="https://img.shields.io/badge/pytest-0A9EDC?style=flat-square&logo=pytest&logoColor=white" />
+  </a>
+  <a href="https://tox.wiki/en/latest/" target="_blank">
+    <img src="https://img.shields.io/badge/tox-20C997?style=flat-square" />
+  </a>
+  <!-- 🧰 TOOLING -->
+  <a href="https://code.visualstudio.com/download" target="_blank">
+    <img src="https://img.shields.io/badge/VS%20Code-007ACC?style=flat-square&logo=visualstudiocode&logoColor=white" />
+  </a>
+  <a href="https://docs.python.org/3/library/typing.html" target="_blank">
+    <img src="https://img.shields.io/badge/typing_extensions-3776AB?style=flat-square&logo=python&logoColor=white" />
+  </a>
+  <a href="https://github.com/Delgan/loguru" target="_blank">
+    <img src="https://img.shields.io/badge/Loguru-EE4C2C?style=flat-square" />
   </a>
   <a href="https://pypi.org/project/setuptools/" target="_blank">
     <img src="https://img.shields.io/badge/pkg-3776AB?style=flat-square&logo=pypi&logoColor=white" />
   </a>
-     <!-- Actividad del repositorio -->
-    <img src="https://img.shields.io/github/last-commit/HubertRonald/MIAD-RAG-RealEstate?style=flat-square" />
-    <img src="https://img.shields.io/github/commit-activity/t/HubertRonald/MIAD-RAG-RealEstate?style=flat-square&color=dodgerblue" />
+  <!-- 📦 CONFIG -->
+  <a href="https://yaml.org/" target="_blank">
+    <img src="https://img.shields.io/badge/YAML-CB171E?style=flat-square&logo=yaml&logoColor=white" />
+  </a>
+  <a href="https://www.json.org/json-en.html" target="_blank">
+    <img src="https://img.shields.io/badge/JSON-5E5C5C?style=flat-square&logo=json&logoColor=white" />
+  </a>
+  <!-- 🐍 LANGUAGE -->
+  <a href="https://www.python.org/" target="_blank">
+    <img src="https://img.shields.io/badge/Python-3670A0?style=flat-square&logo=python&logoColor=ffdd54" />
+  </a>
+  <!-- 📊 REPO ACTIVITY -->
+  <img src="https://img.shields.io/github/last-commit/HubertRonald/MIAD-RAG-RealEstate?style=flat-square" />
+  <img src="https://img.shields.io/github/commit-activity/t/HubertRonald/MIAD-RAG-RealEstate?style=flat-square&color=dodgerblue" />
+
 </p>
 
 # MIAD-RAG-RealEstate
