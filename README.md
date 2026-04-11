@@ -125,7 +125,6 @@ title: RAG Pipeline
 ---
 %%{init: {
   "theme": "base",
-  'look':'handDrawn',
   "flowchart": { "curve": "basis", "nodeSpacing": 50, "rankSpacing": 70 }
 }}%%
 flowchart TD
