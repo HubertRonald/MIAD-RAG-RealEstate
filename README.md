@@ -50,6 +50,22 @@
     <a href="https://numpy.org/" target="_blank">
         <img src="https://img.shields.io/badge/numpy-013243?style=flat-square&logo=numpy&logoColor=white" />
     </a>
+    <!-- RAG / AI -->
+<a href="https://cloud.google.com/vertex-ai/docs/generative-ai" target="_blank">
+  <img src="https://img.shields.io/badge/RAG-Enabled-34A853?style=flat-square&logo=google&logoColor=white" />
+</a>
+<a href="https://ai.google.dev/" target="_blank">
+  <img src="https://img.shields.io/badge/Gemini-LLM%20API-4285F4?style=flat-square&logo=google&logoColor=white" />
+</a>
+<a href="https://faiss.ai/" target="_blank">
+  <img src="https://img.shields.io/badge/FAISS-Vector%20Search-009688?style=flat-square" />
+</a>
+<a href="https://streamlit.io/" target="_blank">
+  <img src="https://img.shields.io/badge/Streamlit-Frontend-FF4B4B?style=flat-square&logo=streamlit&logoColor=white" />
+</a>
+<a href="https://cloud.google.com/bigquery" target="_blank">
+  <img src="https://img.shields.io/badge/BigQuery-Analytics-669DF6?style=flat-square&logo=googlecloud&logoColor=white" />
+</a>
     <!-- CI/CD e infraestructura -->
   <a href="https://yaml.org/" target="_blank">
     <img src="https://img.shields.io/badge/YAML-CB171E?style=flat-square&logo=yaml&logoColor=white" />
@@ -67,7 +83,7 @@
 
 # MIAD-RAG-RealEstate
 ### RAG-based Real Estate Recommendation System on GCP  
-**Montevideo, Uruguay**
+**Semantic Search · Explainable AI · Geospatial Analytics**
 
 
 ## Resumen
@@ -97,12 +113,18 @@ Sistema de recomendación inmobiliaria basado en **Retrieval-Augmented Generatio
 
 ## Flujo de Solución (RAG Pipeline)
 
+Este diagrama resume el flujo de solución del sistema RAG para recomendación inmobiliaria en Montevideo. En la fase offline, los datos obtenidos desde <ins>ExploracionDatos</ins> se transforman, vectorizan y utilizan para construir el índice FAISS, mientras que los atributos estructurados de las propiedades se almacenan en BigQuery. En tiempo real, el usuario interactúa con una interfaz en Streamlit desplegada en Cloud Run, que envía la consulta al backend FastAPI. Allí se recuperan propiedades similares desde FAISS, se enriquecen con información tabular desde BigQuery y finalmente se genera una explicación contextual mediante Gemini. Todo el flujo se apoya en Secret Manager para el manejo seguro de credenciales y en Cloud Logging, LangSmith y RAGAS para trazabilidad, monitoreo y evaluación del sistema.
+
 ```mermaid
+---
+title: RAG Pipeline
+---
 %%{init: {
-  "theme": "default",
+  "theme": "base",
+  'look':'handDrawn',
   "flowchart": { "curve": "basis", "nodeSpacing": 50, "rankSpacing": 70 }
 }}%%
-flowchart LR
+flowchart TD
 
 %% ======================
 %% FUERA DE GCP
@@ -232,6 +254,96 @@ style OBS fill:#F1F3F4,stroke:#9AA0A6
 style OFF fill:#F1F3F4,stroke:#9AA0A6
 ```
 
+## Flujo de Ejecución del Sistema (RAG Pipeline en Tiempo Real)
+
+Este diagrama de secuencia describe el flujo de ejecución del sistema de recomendación basado en **Retrieval-Augmented Generation (RAG)** en tiempo real. A partir de una consulta en lenguaje natural, el frontend en Cloud Run orquesta una solicitud hacia el backend, donde se realiza el procesamiento semántico, la recuperación de propiedades similares mediante FAISS y el enriquecimiento de datos con BigQuery. Posteriormente, se genera una explicación interpretativa utilizando un modelo LLM (Gemini), integrando contexto estructurado y semántico. Finalmente, los resultados son visualizados en la interfaz mediante mapas y tarjetas, proporcionando una experiencia interactiva y explicable para la toma de decisiones inmobiliarias.
+
+```mermaid
+---
+title: RAG Pipeline en Tiempo Real
+---
+%%{init: {
+  "theme": "base",
+  'look':'handDrawn',
+  "themeVariables": {
+    "primaryColor": "#4285F4",
+    "secondaryColor": "#34A853",
+    "tertiaryColor": "#FDD663",
+    "lineColor": "#5F6368",
+    "actorBorder": "#9AA0A6",
+    "actorBkg": "#F1F3F4"
+  }
+}}%%
+
+sequenceDiagram
+autonumber
+
+actor User
+
+participant UI as Cloud Run <br> Streamlit
+participant ORQ as Cloud Run <br> FastAPI
+participant PRS as Query Parser
+participant RAG as RAG <br> Engine
+participant VDB as FAISS <br> in-memory
+participant BQ as BigQuery
+participant RES as Result Store <br> (Memory)
+participant EXP as Explanation <br> Engine
+participant LLM as Gemini <br> API
+
+%% ======================
+%% COLORES POR CAPA
+%% ======================
+%% Frontend
+rect rgba(138,180,248,0.15)
+User->>UI: texto usuario
+UI->>ORQ: request buscar
+end
+
+%% Backend
+rect rgba(66,133,244,0.15)
+ORQ->>PRS: parsear query
+PRS-->>ORQ: filtros + embedding
+end
+
+%% RAG + Data
+rect rgba(129,201,149,0.15)
+ORQ->>RAG: recuperar candidatos
+RAG->>VDB: búsqueda vectorial
+VDB-->>RAG: ids similares
+
+RAG->>BQ: metadatos propiedades
+BQ-->>RAG: propiedades enriquecidas
+RAG-->>ORQ: candidatos
+end
+
+%% Persistencia ligera
+rect rgba(197,138,249,0.15)
+ORQ->>RES: guardar resultados
+RES-->>ORQ: ok
+end
+
+%% AI
+rect rgba(52,168,83,0.15)
+ORQ->>EXP: generar explicación
+EXP->>RES: contexto
+RES-->>EXP: datos
+
+EXP->>LLM: prompt
+LLM-->>EXP: texto
+EXP-->>ORQ: explicación
+end
+
+%% Respuesta UX
+rect rgba(138,180,248,0.15)
+ORQ-->>UI: resultados
+
+UI->>BQ: lat-lon propiedades
+BQ-->>UI: coordenadas
+
+UI-->>User: mapa + cards + explicación
+end
+```
+
 ## .gitignore
 
 Fue generado en [gitignore.io](https://www.toptal.com/developers/gitignore/) con los filtros `python`, `macos`, `windows` y consumido mediante su API como archivo crudo desde la terminal:
@@ -247,7 +359,7 @@ Los shields en las cabeceras de este `Readme.md` se generaron con:
 - <a href="https://shields.io/" target="_blank"><span>https://shields.io/</span></a>
 - <a href="https://github.com/inttter/md-badges" target="_blank"><span>https://github.com/inttter/md-badges</span></a>
 
-> **NOTA:** Todos los shields y/o enlaces cuando se imprima este `Readme.md` a `.pdf` puede ser usados haciendo `Ctrl + Clic` (windows) or `Cmd + Clic` (macOS) sobre los mismos.
+> **NOTA:** Todos los shields y/o enlaces cuando se imprima este `Readme.md` a `.pdf` pueden ser usados haciendo `Ctrl + Clic` (windows) or `Cmd + Clic` (macOS) sobre los mismos.
 
 ## Licencia y derechos de autor
 
