@@ -108,7 +108,7 @@ Sistema de recomendación inmobiliaria basado en **Retrieval-Augmented Generatio
 
 **Stack principal:**
 
-- Cloud Run (Frontend + Backend)
+- Cloud Run (Frontend + Backend + Job:FAISS)
 - BigQuery (datos estructurados)
 - Cloud Storage (FAISS backup)
 - Secret Manager (seguridad)
@@ -121,94 +121,116 @@ Este diagrama resume el flujo de solución del sistema RAG para recomendación i
 
 ```mermaid
 ---
-title: RAG Pipeline
+title: RAG Pipeline - Arquitectura Final (GCP, separación ETL vs RAG)
 ---
 %%{init: {
   "theme": "base",
-  "flowchart": { "curve": "basis", "nodeSpacing": 50, "rankSpacing": 70 }
+  "flowchart": { "curve": "basis", "nodeSpacing": 60, "rankSpacing": 80 }
 }}%%
-flowchart TD
+flowchart LR
 
 %% ======================
-%% FUERA DE GCP
+%% USUARIO
 %% ======================
 subgraph EXT["Usuario"]
     U[Usuario]
-    BROWSER[Navegador]
+    BROWSER[Navegador Web]
 end
 
 %% ======================
 %% FRONTEND
 %% ======================
-subgraph FE["Experiencia de Usuario"]
-    UI[Cloud Run<br/>Streamlit App<br/>Busqueda + Mapa + Cards]
+subgraph FE["Capa de Experiencia - Frontend"]
+    UI[Cloud Run<br/>Streamlit App<br/>Búsqueda + Mapa + Cards]
 end
 
 %% ======================
-%% BACKEND
+%% BACKEND (RAG)
 %% ======================
-subgraph BE["Motor RAG (Orquestación)"]
-    API[Cloud Run<br/>FastAPI]
+subgraph BE["Capa de Orquestación RAG"]
+
+    API[Cloud Run<br/>FastAPI<br/>RAG Orchestrator]
+
+    JOB[Cloud Run Job<br/>Construcción índice FAISS<br/>Pipeline RAG Offline]
+
 end
 
 %% ======================
-%% DATA LAYER
+%% DATA
 %% ======================
-subgraph DATA["Datos"]
-    FAISS[FAISS Index<br/>in-memory]
-    GCS[Cloud Storage<br/>Backup indice]
-    BQ[BigQuery<br/>Datos inmobiliarios]
+subgraph DATA["Capa de Datos"]
+    FAISS[Índice Vectorial FAISS<br/>Embeddings + property_id]
+    GCS[Cloud Storage<br/>Persistencia índice]
+    BQ[BigQuery<br/>Fuente de verdad<br/>Datos estructurados]
 end
 
 %% ======================
-%% AI SERVICES
+%% AI
 %% ======================
-subgraph AI["Inteligencia Artificial"]
-    GEM[Gemini API<br/>Generación + Embeddings]
+subgraph AI["Servicios de Inteligencia Artificial"]
+    GEM[Gemini API<br/>Embeddings + Generación]
 end
 
 %% ======================
 %% SEGURIDAD
 %% ======================
-subgraph SEC["Seguridad"]
-    SM[Secret Manager<br/>Credenciales seguras]
+subgraph SEC["Capa de Seguridad"]
+    SM[Secret Manager]
 end
 
 %% ======================
 %% OBSERVABILIDAD
 %% ======================
-subgraph OBS["Monitoreo y Evaluación"]
+subgraph OBS["Observabilidad y Evaluación"]
     LOGS[Cloud Logging]
     TRACE[LangSmith / RAGAS]
 end
 
 %% ======================
-%% OFFLINE
+%% PIPELINE ETL (DATOS)
 %% ======================
-subgraph OFF["Pipeline Offline"]
-    SCRAPER[ExploracionDatos.py]
-    FEAT[Feature Engineering]
-    EMB[Embeddings]
-    BUILD[Construcción FAISS]
+subgraph ING["Pipeline de Datos (ETL)"]
+
+    SCRAPER[ExploracionDatos.py<br/>Extracción]
+    
+    FEAT[Feature Engineering<br/>Transformación]
+    
+    LOAD[Carga a BigQuery]
+
 end
 
+SCRAPER --> FEAT --> LOAD --> BQ
+
 %% ======================
-%% FLUJO PRINCIPAL
+%% PIPELINE RAG (MODELADO)
+%% ======================
+BQ -->|Datos para embeddings| JOB --> GCS
+
+%% ======================
+%% FLUJO ONLINE
 %% ======================
 U --> BROWSER --> UI --> API
 
-API --> FAISS
+API -->|Embedding de consulta| GEM
+API -->|Búsqueda semántica| FAISS
+
 GCS --> FAISS
 
-FAISS --> IDS[Top-K propiedades similares]
-IDS --> BQ
-BQ --> DATA2[Datos enriquecidos<br/>precio, ubicación, atributos]
+FAISS --> IDS[Top-K property_id]
+
+IDS -->|Lookup| BQ
+BQ --> DATA2[Datos enriquecidos<br/>lat/lon + atributos]
 
 DATA2 --> API
-API --> GEM
-GEM --> RESP[Explicación + recomendación]
+API -->|Generación| GEM
+GEM --> RESP[Respuesta explicada]
 
 RESP --> UI --> BROWSER
+
+%% ======================
+%% VISUALIZACIÓN
+%% ======================
+BQ --> UI
 
 %% ======================
 %% SEGURIDAD
@@ -221,12 +243,7 @@ GEM --> SM
 %% ======================
 API -.-> LOGS
 API -.-> TRACE
-
-%% ======================
-%% OFFLINE FLOW
-%% ======================
-SCRAPER --> FEAT --> EMB --> BUILD --> GCS
-FEAT --> BQ
+JOB -.-> LOGS
 
 %% ======================
 %% ESTILOS
@@ -237,15 +254,15 @@ classDef data fill:#81C995,color:#fff,stroke:#4CAF50,stroke-width:2px
 classDef ai fill:#34A853,color:#fff,stroke:#0F9D58,stroke-width:2px
 classDef sec fill:#FDD663,color:#000,stroke:#F9AB00,stroke-width:2px
 classDef obs fill:#F28B82,color:#fff,stroke:#D93025,stroke-width:2px
-classDef off fill:#C58AF9,color:#fff,stroke:#9334E6,stroke-width:2px
+classDef ingest fill:#C58AF9,color:#fff,stroke:#9334E6,stroke-width:2px
 
 class UI fe
-class API be
+class API,JOB be
 class FAISS,GCS,BQ data
 class GEM ai
 class SM sec
 class LOGS,TRACE obs
-class SCRAPER,FEAT,EMB,BUILD off
+class SCRAPER,FEAT,LOAD ingest
 
 style EXT fill:#F1F3F4,stroke:#9AA0A6
 style FE fill:#F1F3F4,stroke:#9AA0A6
@@ -254,8 +271,11 @@ style DATA fill:#F1F3F4,stroke:#9AA0A6
 style AI fill:#F1F3F4,stroke:#9AA0A6
 style SEC fill:#F1F3F4,stroke:#9AA0A6
 style OBS fill:#F1F3F4,stroke:#9AA0A6
-style OFF fill:#F1F3F4,stroke:#9AA0A6
+style ING fill:#F1F3F4,stroke:#9AA0A6
 ```
+
+
+> **Nota:** En este proyecto, la capa de análisis no se basa en modelos tradicionales supervisados, sino en un enfoque de recuperación aumentada (RAG), donde el "modelo" está representado por un índice vectorial (FAISS) construido a partir de embeddings generados con Gemini. Este índice permite realizar búsquedas semánticas eficientes sobre las propiedades inmobiliarias, las cuales son posteriormente enriquecidas con datos estructurados desde BigQuery y utilizadas para generar respuestas explicativas mediante un modelo de lenguaje.
 
 ## Flujo de Ejecución del Sistema (RAG Pipeline en Tiempo Real)
 
@@ -263,11 +283,11 @@ Este diagrama de secuencia describe el flujo de ejecución del sistema de recome
 
 ```mermaid
 ---
-title: RAG Pipeline en Tiempo Real
+title: Flujo en Tiempo Real - RAG Orchestrator
 ---
 %%{init: {
   "theme": "base",
-  'look':'handDrawn',
+  "look":"handDrawn",
   "themeVariables": {
     "primaryColor": "#4285F4",
     "secondaryColor": "#34A853",
@@ -284,64 +304,58 @@ autonumber
 actor User
 
 participant UI as Cloud Run <br> Streamlit
-participant ORQ as Cloud Run <br> FastAPI
-participant PRS as Query Parser
-participant RAG as RAG <br> Engine
-participant VDB as FAISS <br> in-memory
-participant BQ as BigQuery
-participant RES as Result Store <br> (Memory)
-participant EXP as Explanation <br> Engine
-participant LLM as Gemini <br> API
+participant API as Cloud Run <br> FastAPI<br/>RAG Orchestrator
+participant FAISS as FAISS Index <br> in-memory
+participant BQ as BigQuery <br> (Fuente de verdad)
+participant LLM as Gemini API
 
 %% ======================
-%% COLORES POR CAPA
+%% FRONTEND
 %% ======================
-%% Frontend
 rect rgba(138,180,248,0.15)
-User->>UI: texto usuario
-UI->>ORQ: request buscar
+User->>UI: texto libre (búsqueda)
+UI->>API: request buscar
 end
 
-%% Backend
-rect rgba(66,133,244,0.15)
-ORQ->>PRS: parsear query
-PRS-->>ORQ: filtros + embedding
-end
-
-%% RAG + Data
-rect rgba(129,201,149,0.15)
-ORQ->>RAG: recuperar candidatos
-RAG->>VDB: búsqueda vectorial
-VDB-->>RAG: ids similares
-
-RAG->>BQ: metadatos propiedades
-BQ-->>RAG: propiedades enriquecidas
-RAG-->>ORQ: candidatos
-end
-
-%% Persistencia ligera
-rect rgba(197,138,249,0.15)
-ORQ->>RES: guardar resultados
-RES-->>ORQ: ok
-end
-
-%% AI
+%% ======================
+%% EMBEDDING QUERY
+%% ======================
 rect rgba(52,168,83,0.15)
-ORQ->>EXP: generar explicación
-EXP->>RES: contexto
-RES-->>EXP: datos
-
-EXP->>LLM: prompt
-LLM-->>EXP: texto
-EXP-->>ORQ: explicación
+API->>LLM: generar embedding(query)
+LLM-->>API: vector embedding
 end
 
-%% Respuesta UX
-rect rgba(138,180,248,0.15)
-ORQ-->>UI: resultados
+%% ======================
+%% RETRIEVAL (FAISS)
+%% ======================
+rect rgba(129,201,149,0.15)
+API->>FAISS: búsqueda semántica
+FAISS-->>API: Top-K property_id
+end
 
-UI->>BQ: lat-lon propiedades
-BQ-->>UI: coordenadas
+%% ======================
+%% ENRIQUECIMIENTO (BQ)
+%% ======================
+rect rgba(129,201,149,0.15)
+API->>BQ: lookup metadata (IDs)
+BQ-->>API: datos enriquecidos<br/>atributos + lat/lon
+end
+
+%% ======================
+%% GENERACIÓN (LLM)
+%% ======================
+rect rgba(52,168,83,0.15)
+API->>LLM: generar explicación<br/>contexto enriquecido
+LLM-->>API: respuesta natural
+end
+
+%% ======================
+%% RESPUESTA UX
+%% ======================
+rect rgba(138,180,248,0.15)
+API-->>UI: resultados + explicación + lat/lon
+
+
 
 UI-->>User: mapa + cards + explicación
 end
