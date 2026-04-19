@@ -125,9 +125,10 @@ title: RAG Pipeline - Arquitectura Final (GCP, separación ETL vs RAG)
 ---
 %%{init: {
   "theme": "base",
-  "flowchart": { "curve": "basis", "nodeSpacing": 60, "rankSpacing": 80 }
+  "flowchart": { "curve": "basis", "nodeSpacing": 60, "rankSpacing": 80 },
+  'themeVariables': { 'fontSize': '28px'}
 }}%%
-flowchart LR
+flowchart TD
 
 %% ======================
 %% USUARIO
@@ -305,47 +306,56 @@ actor User
 
 participant UI as Cloud Run <br> Streamlit
 participant API as Cloud Run <br> FastAPI<br/>RAG Orchestrator
+participant QUL as Query<br>Understanding<br>Layer
 participant FAISS as FAISS Index <br> in-memory
-participant BQ as BigQuery <br> (Fuente de verdad)
+participant BQ as BigQuery <br> Fuente de verdad
 participant LLM as Gemini API
 
 %% ======================
 %% FRONTEND
 %% ======================
 rect rgba(138,180,248,0.15)
-User->>UI: texto libre (búsqueda)
+User->>UI: texto libre búsqueda con filtros
 UI->>API: request buscar
+end
+
+%% ======================
+%% QUERY UNDERSTANDING
+%% ======================
+rect rgba(253,214,99,0.20)
+API->>QUL: validar intención y extraer filtros
+QUL-->>API: query limpia + filtros estructurados
 end
 
 %% ======================
 %% EMBEDDING QUERY
 %% ======================
 rect rgba(52,168,83,0.15)
-API->>LLM: generar embedding(query)
+API->>LLM: generar embedding query limpia
 LLM-->>API: vector embedding
 end
 
 %% ======================
-%% RETRIEVAL (FAISS)
+%% RETRIEVAL FAISS
 %% ======================
 rect rgba(129,201,149,0.15)
 API->>FAISS: búsqueda semántica
-FAISS-->>API: Top-K property_id
+FAISS-->>API: Top K property_id
 end
 
 %% ======================
-%% ENRIQUECIMIENTO (BQ)
+%% ENRIQUECIMIENTO BQ
 %% ======================
 rect rgba(129,201,149,0.15)
-API->>BQ: lookup metadata (IDs)
-BQ-->>API: datos enriquecidos<br/>atributos + lat/lon
+API->>BQ: lookup + aplicar filtros
+BQ-->>API: datos enriquecidos atributos lat lon
 end
 
 %% ======================
-%% GENERACIÓN (LLM)
+%% GENERACIÓN LLM
 %% ======================
 rect rgba(52,168,83,0.15)
-API->>LLM: generar explicación<br/>contexto enriquecido
+API->>LLM: generar explicación contexto enriquecido
 LLM-->>API: respuesta natural
 end
 
@@ -353,11 +363,8 @@ end
 %% RESPUESTA UX
 %% ======================
 rect rgba(138,180,248,0.15)
-API-->>UI: resultados + explicación + lat/lon
-
-
-
-UI-->>User: mapa + cards + explicación
+API-->>UI: resultados explicación lat lon
+UI-->>User: mapa cards explicación
 end
 ```
 
