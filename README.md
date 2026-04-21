@@ -368,6 +368,131 @@ UI-->>User: mapa cards explicación
 end
 ```
 
+## Estructura del repositorio
+
+Estructura principal
+
+```bash
+MIAD-RAG-RealEstate/
+├── .github/
+│   └── workflows/
+│       ├── backend-ci.yml
+│       ├── frontend-ci.yml
+│       ├── job-ci.yml
+│       └── terraform.yml
+│
+├── infra/                         # Infraestructura como código (Terraform)
+│   ├── bootstrap/
+│   │   ├── backend.tf
+│   │   ├── providers.tf
+│   │   └── versions.tf
+│   ├── envs/
+│   │   └── dev/
+│   │       ├── main.tf
+│   │       ├── variables.tf
+│   │       ├── outputs.tf
+│   │       └── terraform.tfvars
+│   └── modules/
+│       ├── artifact_registry/
+│       ├── cloud_run_service/
+│       ├── cloud_run_job/
+│       ├── bigquery/
+│       ├── gcs/
+│       ├── iam/
+│       └── secrets/
+│
+├── apps/
+│   ├── backend/                   # Cloud Run - RAG Orchestrator
+│   │   ├── app/
+│   │   │   ├── routers/
+│   │   │   ├── services/
+│   │   │   │   ├── query_understanding_service.py
+│   │   │   │   ├── embedding_service.py
+│   │   │   │   ├── retrieval_service.py
+│   │   │   │   ├── generation_service.py
+│   │   │   │   └── rag_orchestrator_service.py
+│   │   │   ├── models/
+│   │   │   └── utils/
+│   │   ├── tests/
+│   │   ├── main.py
+│   │   ├── requirements.txt
+│   │   └── Dockerfile
+│   │
+│   ├── frontend/                  # Cloud Run - Streamlit
+│   │   ├── app/
+│   │   │   ├── pages/
+│   │   │   ├── components/
+│   │   │   └── main.py
+│   │   ├── requirements.txt
+│   │   └── Dockerfile
+│   │
+│   └── job-indexer/              # Cloud Run Job - FAISS builder
+│       ├── app/
+│       │   ├── build_index.py
+│       │   ├── services/
+│       │   │   ├── bigquery_reader.py
+│       │   │   ├── embedding_service.py
+│       │   │   ├── faiss_builder.py
+│       │   │   └── gcs_service.py
+│       │   └── utils/
+│       ├── tests/
+│       ├── requirements.txt
+│       └── Dockerfile
+│
+├── shared/                       # Código compartido (NO duplicar lógica)
+│   ├── python/
+│   │   └── miad_rag_common/
+│   │       ├── config/
+│   │       ├── schemas/
+│   │       ├── logging/
+│   │       └── gcp/
+│   └── contracts/
+│       ├── openapi/
+│       ├── jsonschemas/
+│       └── examples/
+│
+├── data/
+│   ├── schemas/
+│   │   └── bigquery_schema.json
+│   ├── samples/
+│   └── dictionaries/
+│       └── data_dictionary.md
+│
+├── eval/
+│   ├── ragas/
+│   │   ├── datasets/
+│   │   │   ├── test_queries.csv
+│   │   │   └── golden_set.csv
+│   │   ├── notebooks/
+│   │   └── scripts/
+│   └── postman/
+│
+├── figs/
+├── docs/
+│   ├── architecture/
+│   ├── adr/
+│   └── runbooks/
+├── .gitignore
+└── README.md
+```
+
+## Naming Convention (GCP Resources)
+
+| Recurso              | Nombre                          | Descripción                                                                 |
+|----------------------|----------------------------------|-----------------------------------------------------------------------------|
+| **Project ID**       | `miad-paad-rs-dev`              | Proyecto principal en GCP para el sistema RAG inmobiliario                 |
+| **Artifact Registry**| `miad-rag-repo`                 | Repositorio de imágenes Docker (backend, frontend, job)                    |
+| **Cloud Run (FE)**   | `miad-rag-frontend`             | Servicio frontend (Streamlit App)                                          |
+| **Cloud Run (BE)**   | `miad-rag-backend`              | Servicio backend (FastAPI - RAG Orchestrator)                              |
+| **Cloud Run Job**    | `miad-rag-indexer-job`          | Job batch para construcción del índice FAISS                               |
+| **Bucket (staging)** | `miad-paad-rs-staging-dev`      | Almacenamiento de CSVs, datasets y artefactos intermedios                  |
+| **Bucket (index)**   | `miad-paad-rs-index-dev`        | Almacenamiento de índices vectoriales FAISS                                |
+| **BigQuery Dataset** | `ds_miad_rag_rs`                | Dataset principal de datos estructurados                                   |
+| **BigQuery Table**   | `real_estate_listings`          | Tabla de propiedades inmobiliarias (fuente de verdad)                      |
+
+> La convención de nombres sigue un patrón consistente basado en {organización}-{curso}-{dominio}-{entorno}, facilitando la trazabilidad, escalabilidad y gobierno de los recursos en GCP.
+
+
 ## .gitignore
 
 Fue generado en [gitignore.io](https://www.toptal.com/developers/gitignore/) con los filtros `python`, `macos`, `windows` y consumido mediante su API como archivo crudo desde la terminal:
