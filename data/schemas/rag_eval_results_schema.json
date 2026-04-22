@@ -1,0 +1,68 @@
+[
+    {
+      "name": "run_id",
+      "type": "STRING",
+      "mode": "REQUIRED",
+      "description": "Identificador único de la corrida de evaluación."
+    },
+    {
+      "name": "query",
+      "type": "STRING",
+      "mode": "NULLABLE",
+      "description": "Consulta evaluada en el pipeline RAG."
+    },
+    {
+      "name": "expected_answer",
+      "type": "STRING",
+      "mode": "NULLABLE",
+      "description": "Respuesta esperada o referencia dorada para la evaluación."
+    },
+    {
+      "name": "generated_answer",
+      "type": "STRING",
+      "mode": "NULLABLE",
+      "description": "Respuesta generada por el sistema RAG."
+    },
+    {
+      "name": "retrieved_context",
+      "type": "STRING",
+      "mode": "NULLABLE",
+      "description": "Contexto recuperado por el sistema para responder la consulta."
+    },
+    {
+      "name": "answer_correctness",
+      "type": "FLOAT",
+      "mode": "NULLABLE",
+      "description": "Métrica de corrección de la respuesta generada."
+    },
+    {
+      "name": "faithfulness",
+      "type": "FLOAT",
+      "mode": "NULLABLE",
+      "description": "Métrica de fidelidad de la respuesta respecto al contexto recuperado."
+    },
+    {
+      "name": "context_precision",
+      "type": "FLOAT",
+      "mode": "NULLABLE",
+      "description": "Precisión del contexto recuperado por el sistema."
+    },
+    {
+      "name": "context_recall",
+      "type": "FLOAT",
+      "mode": "NULLABLE",
+      "description": "Cobertura del contexto recuperado frente al contexto esperado."
+    },
+    {
+      "name": "answer_relevancy",
+      "type": "FLOAT",
+      "mode": "NULLABLE",
+      "description": "Relevancia de la respuesta respecto a la consulta del usuario."
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMP",
+      "mode": "NULLABLE",
+      "description": "Fecha y hora de creación del registro de evaluación."
+    }
+]
