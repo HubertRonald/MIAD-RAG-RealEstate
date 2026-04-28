@@ -11,68 +11,68 @@ variable "region" {
 }
 
 variable "artifact_repo_name" {
-  type        = string
-  default     = "miad-rag-repo"
+  type    = string
+  default = "miad-rag-repo"
 }
 
 variable "frontend_service_name" {
-  type        = string
-  default     = "miad-rag-frontend"
+  type    = string
+  default = "miad-rag-frontend"
 }
 
 variable "backend_service_name" {
-  type        = string
-  default     = "miad-rag-backend"
+  type    = string
+  default = "miad-rag-backend"
 }
 
 variable "indexer_job_name" {
-  type        = string
-  default     = "miad-rag-indexer-job"
+  type    = string
+  default = "miad-rag-indexer-job"
 }
 
 variable "staging_bucket_name" {
-  type        = string
-  default     = "miad-paad-rs-staging-dev"
+  type    = string
+  default = "miad-paad-rs-staging-dev"
 }
 
 variable "index_bucket_name" {
-  type        = string
-  default     = "miad-paad-rs-index-dev"
+  type    = string
+  default = "miad-paad-rs-index-dev"
 }
 
 variable "bigquery_dataset_id" {
-  type        = string
-  default     = "ds_miad_rag_rs"
+  type    = string
+  default = "ds_miad_rag_rs"
 }
 
 variable "bigquery_main_table_id" {
-  type        = string
-  default     = "real_estate_listings"
+  type    = string
+  default = "real_estate_listings"
 }
 
 variable "bigquery_eval_table_id" {
-  type        = string
-  default     = "rag_eval_results"
+  type    = string
+  default = "rag_eval_results"
 }
 
 variable "sa_frontend_id" {
-  type        = string
-  default     = "sa-rag-frontend"
+  type    = string
+  default = "sa-rag-frontend"
 }
 
 variable "sa_backend_id" {
-  type        = string
-  default     = "sa-rag-backend"
+  type    = string
+  default = "sa-rag-backend"
 }
 
 variable "sa_indexer_id" {
-  type        = string
-  default     = "sa-rag-indexer"
+  type    = string
+  default = "sa-rag-indexer"
 }
 
 variable "sa_github_deployer_id" {
-  type        = string
-  default     = "sa-github-deployer"
+  type    = string
+  default = "sa-github-deployer"
 }
 
 variable "frontend_image" {

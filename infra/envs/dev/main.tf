@@ -19,6 +19,7 @@ resource "google_project_service" "services" {
   disable_on_destroy = false
 }
 
+/*
 resource "google_artifact_registry_repository" "repo" {
   provider      = google-beta
   project       = var.project_id
@@ -30,6 +31,7 @@ resource "google_artifact_registry_repository" "repo" {
 
   depends_on = [google_project_service.services]
 }
+*/
 
 resource "google_storage_bucket" "staging" {
   name                        = var.staging_bucket_name
@@ -67,11 +69,13 @@ resource "google_service_account" "indexer" {
   display_name = "Indexer job service account"
 }
 
+/*
 resource "google_service_account" "github_deployer" {
   project      = var.project_id
   account_id   = var.sa_github_deployer_id
   display_name = "GitHub deployer service account"
 }
+*/
 
 resource "google_project_iam_member" "frontend_bq_viewer" {
   project = var.project_id
