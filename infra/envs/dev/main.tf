@@ -284,10 +284,11 @@ resource "google_cloud_run_v2_service_iam_member" "backend_invoker_frontend_sa" 
 }
 
 resource "google_cloud_run_v2_job" "indexer" {
-  provider = google-beta
-  name     = var.indexer_job_name
-  location = var.region
-  project  = var.project_id
+  provider            = google-beta
+  name                = var.indexer_job_name
+  location            = var.region
+  project             = var.project_id
+  deletion_protection = false
 
   template {
     template {
