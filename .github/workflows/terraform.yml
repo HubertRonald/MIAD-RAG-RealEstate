@@ -1,13 +1,6 @@
 name: Terraform Dev
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - "infra/**"
-      - "data/schemas/**"
-      - ".github/workflows/terraform.yml"
-
   push:
     branches: [main]
     paths:
