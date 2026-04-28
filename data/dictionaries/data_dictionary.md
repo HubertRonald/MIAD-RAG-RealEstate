@@ -46,7 +46,7 @@ Este documento describe el mapeo entre el dataset CSV enriquecido y la tabla fin
 | price_m2_basis | price_m2_basis | object | STRING | Campo ETL. Indica si el cálculo m² se basó en área total o cubierta. |
 | lat | lat | float64 | FLOAT | Latitud geográfica del inmueble. |
 | lon | lon | float64 | FLOAT | Longitud geográfica del inmueble. |
-| geometry | geometry | object | STRING | Objeto geométrico Point para procesamiento espacial. |
+| geometry | geometry | geometry | GEOGRAPHY | Objeto geométrico Point para procesamiento espacial. |
 | BARRIO | barrio | object | STRING | Nombre del barrio oficial de Montevideo (validado por Join Espacial). |
 | NROBARRIO | nrobarrio | float64 | FLOAT | Código numérico oficial del barrio. |
 | DEPARTAMEN | departamen | object | STRING | Departamento administrativo (Montevideo). |
@@ -98,4 +98,4 @@ Este documento describe el mapeo entre el dataset CSV enriquecido y la tabla fin
 - `real_estate_listings` es la fuente de verdad estructurada del sistema.
 - El índice FAISS no reemplaza esta tabla; almacena embeddings y referencias por `property_id`.
 - Las columnas con nombres originales en mayúsculas o con punto se normalizan para BigQuery.
-- Si el CSV conserva listas u objetos serializados, campos como `image_urls`, `amenities` y `geometry` pueden cargarse inicialmente como `STRING`.
+- Si el CSV conserva listas u objetos serializados, campos como `image_urls`, `amenities` y `geometry` pueden cargarse inicialmente como `STRING`, a excepción de `geometry`, para más información ver [BigQuery: Trabajar con datos geoespaciales](https://docs.cloud.google.com/bigquery/docs/geospatial-data?hl=es#python)
