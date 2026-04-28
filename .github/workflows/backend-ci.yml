@@ -1,0 +1,57 @@
+name: Backend CI CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/backend/**"
+      - "shared/**"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    branches: [dev, main]
+    paths:
+      - "apps/backend/**"
+      - "shared/**"
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  SERVICE_NAME: miad-rag-backend
+  IMAGE_NAME: miad-rag-backend
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker auth
+        run: |
+          gcloud auth configure-docker ${{ vars.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Build image
+        run: |
+          IMAGE_URI="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPO }}/${IMAGE_NAME}:${{ github.sha }}"
+          docker build -t "$IMAGE_URI" apps/backend
+          docker push "$IMAGE_URI"
+          echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
+
+      - name: Deploy backend
+        if: github.ref == 'refs/heads/dev'
+        run: |
+          gcloud run services update "$SERVICE_NAME" \
+            --image "$IMAGE_URI" \
+            --region "${{ vars.GCP_REGION }}" \
+            --project "${{ vars.GCP_PROJECT_ID }}"
