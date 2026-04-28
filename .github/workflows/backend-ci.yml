@@ -43,6 +43,10 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v3
 
+      - name: Validate Dockerfile
+        run: |
+          test -s apps/backend/Dockerfile || (echo "Dockerfile is missing or empty" && exit 1)
+
       - name: Configure Docker auth
         run: |
           gcloud auth configure-docker ${{ vars.GCP_REGION }}-docker.pkg.dev --quiet
