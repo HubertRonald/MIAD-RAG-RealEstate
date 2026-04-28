@@ -47,7 +47,10 @@ jobs:
         run: terraform fmt -check -recursive
 
       - name: Terraform init
-        run: terraform init
+        run: terraform init -reconfigure
+
+      - name: Terraform state list
+        run: terraform state list || true
 
       - name: Terraform validate
         run: terraform validate
