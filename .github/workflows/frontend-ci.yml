@@ -1,23 +1,28 @@
 name: Frontend CI CD
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/frontend/**"
+      - "shared/**"
+      - ".github/workflows/frontend-ci.yml"
+
   push:
     branches: [main]
     paths:
       - "apps/frontend/**"
       - "shared/**"
       - ".github/workflows/frontend-ci.yml"
-  pull_request:
-    branches: [dev, main]
-    paths:
-      - "apps/frontend/**"
-      - "shared/**"
+
+  workflow_dispatch:
 
 permissions:
   contents: read
   id-token: write
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   SERVICE_NAME: miad-rag-frontend
   IMAGE_NAME: miad-rag-frontend
 
@@ -26,30 +31,31 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v5
 
       - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
       - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
 
       - name: Configure Docker auth
         run: |
           gcloud auth configure-docker ${{ vars.GCP_REGION }}-docker.pkg.dev --quiet
 
-      - name: Build image
+      - name: Build and push frontend image
         run: |
           IMAGE_URI="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPO }}/${IMAGE_NAME}:${{ github.sha }}"
           docker build -t "$IMAGE_URI" apps/frontend
           docker push "$IMAGE_URI"
           echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
 
-      - name: Deploy frontend
-        if: github.ref == 'refs/heads/dev'
+      - name: Deploy frontend to Cloud Run
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
           gcloud run services update "$SERVICE_NAME" \
             --image "$IMAGE_URI" \

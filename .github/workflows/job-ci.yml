@@ -1,17 +1,20 @@
 name: Indexer Job CI CD
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/job-indexer/**"
+      - "shared/**"
+      - ".github/workflows/job-ci.yml"
+
   push:
     branches: [main]
     paths:
       - "apps/job-indexer/**"
       - "shared/**"
       - ".github/workflows/job-ci.yml"
-  pull_request:
-    branches: [dev, main]
-    paths:
-      - "apps/job-indexer/**"
-      - "shared/**"
+
   workflow_dispatch:
     inputs:
       execute_job:
@@ -24,6 +27,7 @@ permissions:
   id-token: write
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   JOB_NAME: miad-rag-indexer-job
   IMAGE_NAME: miad-rag-indexer-job
 
@@ -32,22 +36,23 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v5
 
       - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
       - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
 
       - name: Configure Docker auth
         run: |
           gcloud auth configure-docker ${{ vars.GCP_REGION }}-docker.pkg.dev --quiet
 
-      - name: Build image
+      - name: Build and push indexer job image
         run: |
           IMAGE_URI="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPO }}/${IMAGE_NAME}:${{ github.sha }}"
           docker build -t "$IMAGE_URI" apps/job-indexer
@@ -55,7 +60,7 @@ jobs:
           echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
 
       - name: Update Cloud Run Job
-        if: github.ref == 'refs/heads/dev'
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
           gcloud run jobs update "$JOB_NAME" \
             --image "$IMAGE_URI" \
