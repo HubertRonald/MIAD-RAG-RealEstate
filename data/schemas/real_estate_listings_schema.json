@@ -31,7 +31,7 @@
     { "name": "price_m2_basis", "type": "STRING", "mode": "NULLABLE", "description": "Campo ETL. Indica si el cálculo por metro cuadrado se basó en área total o cubierta." },
     { "name": "lat", "type": "FLOAT", "mode": "NULLABLE", "description": "Latitud geográfica del inmueble." },
     { "name": "lon", "type": "FLOAT", "mode": "NULLABLE", "description": "Longitud geográfica del inmueble." },
-    { "name": "geometry", "type": "STRING", "mode": "NULLABLE", "description": "Objeto geométrico Point para procesamiento espacial." },
+    { "name": "geometry", "type": "GEOGRAPHY", "mode": "NULLABLE", "description": "Objeto geométrico Point para procesamiento espacial." },
     { "name": "barrio", "type": "STRING", "mode": "NULLABLE", "description": "Nombre del barrio oficial de Montevideo validado por join espacial." },
     { "name": "nrobarrio", "type": "FLOAT", "mode": "NULLABLE", "description": "Código numérico oficial del barrio." },
     { "name": "departamen", "type": "STRING", "mode": "NULLABLE", "description": "Departamento administrativo, Montevideo." },
