@@ -95,7 +95,7 @@ Sistema de recomendación inmobiliaria basado en **Retrieval-Augmented Generatio
 ## Arquitectura GCP
 
 <p align="center">
-    <img src="./figs/MIAD-RAG-RealEstate.png" width="980" />
+    <img src="./figs/MIAD-RAG-RealEstate-GCP-Architecture.png" width="980" />
 </p>
 
 **Stack principal:**

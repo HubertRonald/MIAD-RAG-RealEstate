@@ -1,0 +1,71 @@
+name: Indexer Job CI CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/job-indexer/**"
+      - "shared/**"
+      - ".github/workflows/job-ci.yml"
+  pull_request:
+    branches: [dev, main]
+    paths:
+      - "apps/job-indexer/**"
+      - "shared/**"
+  workflow_dispatch:
+    inputs:
+      execute_job:
+        description: "Execute Cloud Run Job after deploy"
+        required: true
+        default: "false"
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  JOB_NAME: miad-rag-indexer-job
+  IMAGE_NAME: miad-rag-indexer-job
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker auth
+        run: |
+          gcloud auth configure-docker ${{ vars.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Build image
+        run: |
+          IMAGE_URI="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPO }}/${IMAGE_NAME}:${{ github.sha }}"
+          docker build -t "$IMAGE_URI" apps/job-indexer
+          docker push "$IMAGE_URI"
+          echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
+
+      - name: Update Cloud Run Job
+        if: github.ref == 'refs/heads/dev'
+        run: |
+          gcloud run jobs update "$JOB_NAME" \
+            --image "$IMAGE_URI" \
+            --region "${{ vars.GCP_REGION }}" \
+            --project "${{ vars.GCP_PROJECT_ID }}"
+
+      - name: Execute Cloud Run Job
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.execute_job == 'true'
+        run: |
+          gcloud run jobs execute "$JOB_NAME" \
+            --region "${{ vars.GCP_REGION }}" \
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            --wait
