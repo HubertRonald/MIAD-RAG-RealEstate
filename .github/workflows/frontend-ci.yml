@@ -1,13 +1,6 @@
 name: Frontend CI CD
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - "apps/frontend/**"
-      - "shared/**"
-      - ".github/workflows/frontend-ci.yml"
-
   push:
     branches: [main]
     paths:

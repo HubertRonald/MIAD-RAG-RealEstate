@@ -1,13 +1,6 @@
 name: Indexer Job CI CD
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - "apps/job-indexer/**"
-      - "shared/**"
-      - ".github/workflows/job-ci.yml"
-
   push:
     branches: [main]
     paths:

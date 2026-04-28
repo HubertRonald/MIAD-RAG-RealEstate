@@ -1,13 +1,6 @@
 name: Backend CI CD
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - "apps/backend/**"
-      - "shared/**"
-      - ".github/workflows/backend-ci.yml"
-
   push:
     branches: [main]
     paths:
