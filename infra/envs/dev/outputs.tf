@@ -1,5 +1,5 @@
 output "artifact_registry_repo" {
-  value = google_artifact_registry_repository.repo.name
+  value = var.artifact_repo_name
 }
 
 output "frontend_url" {
