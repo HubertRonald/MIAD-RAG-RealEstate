@@ -56,13 +56,25 @@ jobs:
           docker push "$IMAGE_URI"
           echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
 
-      - name: Update Cloud Run Job
+      - name: Create or update Cloud Run Job
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
-          gcloud run jobs update "$JOB_NAME" \
-            --image "$IMAGE_URI" \
+          if gcloud run jobs describe "$JOB_NAME" \
             --region "${{ vars.GCP_REGION }}" \
-            --project "${{ vars.GCP_PROJECT_ID }}"
+            --project "${{ vars.GCP_PROJECT_ID }}" >/dev/null 2>&1; then
+
+            echo "Updating existing Cloud Run Job: $JOB_NAME"
+            gcloud run jobs update "$JOB_NAME" \
+              --image "$IMAGE_URI" \
+              --region "${{ vars.GCP_REGION }}" \
+              --project "${{ vars.GCP_PROJECT_ID }}"
+          else
+            echo "Creating Cloud Run Job: $JOB_NAME"
+            gcloud run jobs create "$JOB_NAME" \
+              --image "$IMAGE_URI" \
+              --region "${{ vars.GCP_REGION }}" \
+              --project "${{ vars.GCP_PROJECT_ID }}"
+          fi
 
       - name: Execute Cloud Run Job
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.execute_job == 'true'
