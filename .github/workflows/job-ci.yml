@@ -51,9 +51,13 @@ jobs:
 
       - name: Build and push indexer job image
         run: |
-          IMAGE_URI="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPO }}/${IMAGE_NAME}:${{ github.sha }}"
-          docker build -t "$IMAGE_URI" apps/job-indexer
+          IMAGE_BASE="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPO }}/${IMAGE_NAME}"
+          IMAGE_URI="${IMAGE_BASE}:${{ github.sha }}"
+
+          docker build -t "$IMAGE_URI" -t "${IMAGE_BASE}:latest" apps/job-indexer
           docker push "$IMAGE_URI"
+          docker push "${IMAGE_BASE}:latest"
+
           echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
 
       - name: Create or update Cloud Run Job
