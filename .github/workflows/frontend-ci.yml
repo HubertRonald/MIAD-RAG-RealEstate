@@ -47,9 +47,13 @@ jobs:
 
       - name: Build and push frontend image
         run: |
-          IMAGE_URI="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPO }}/${IMAGE_NAME}:${{ github.sha }}"
-          docker build -t "$IMAGE_URI" apps/frontend
+          IMAGE_BASE="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPO }}/${IMAGE_NAME}"
+          IMAGE_URI="${IMAGE_BASE}:${{ github.sha }}"
+
+          docker build -t "$IMAGE_URI" -t "${IMAGE_BASE}:latest" apps/frontend
           docker push "$IMAGE_URI"
+          docker push "${IMAGE_BASE}:latest"
+
           echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
 
       - name: Create or update frontend Cloud Run service
