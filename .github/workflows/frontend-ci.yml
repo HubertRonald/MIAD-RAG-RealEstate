@@ -52,10 +52,25 @@ jobs:
           docker push "$IMAGE_URI"
           echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
 
-      - name: Deploy frontend to Cloud Run
+      - name: Create or update frontend Cloud Run service
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
-          gcloud run services update "$SERVICE_NAME" \
-            --image "$IMAGE_URI" \
+          if gcloud run services describe "$SERVICE_NAME" \
             --region "${{ vars.GCP_REGION }}" \
-            --project "${{ vars.GCP_PROJECT_ID }}"
+            --project "${{ vars.GCP_PROJECT_ID }}" >/dev/null 2>&1; then
+
+            echo "Updating existing Cloud Run service: $SERVICE_NAME"
+            gcloud run services update "$SERVICE_NAME" \
+              --image "$IMAGE_URI" \
+              --region "${{ vars.GCP_REGION }}" \
+              --project "${{ vars.GCP_PROJECT_ID }}"
+          else
+            echo "Creating Cloud Run service: $SERVICE_NAME"
+            gcloud run deploy "$SERVICE_NAME" \
+              --image "$IMAGE_URI" \
+              --region "${{ vars.GCP_REGION }}" \
+              --project "${{ vars.GCP_PROJECT_ID }}" \
+              --platform managed \
+              --no-allow-unauthenticated \
+              --port 8501
+          fi
