@@ -120,3 +120,37 @@ data/scripts/load_real_estate_listings.sh
 Este script:
 - Sube el CSV a Cloud Storage
 - Inserta los datos en BigQuery usando el esquema definido
+
+---
+
+### Flujo de Datos del Artefacto:
+
+La separación sanitizada quedaría así:
+
+`job-indexer` construye el índice. Lee `miad-paad-rs-dev.ds_miad_rag_rs.real_estate_listings`, transforma cada fila en documento RAG, genera embeddings, construye FAISS y publica artefactos en `gs://miad-paad-rs-index-dev`.
+
+`backend` no construye índices en caliente. Solo descarga/carga el índice vigente, recibe peticiones del frontend, aplica filtros + búsqueda semántica, recupera IDs, consulta BigQuery para enriquecer las propiedades y genera la respuesta narrativa.
+
+`frontend` no sabe nada de FAISS ni BigQuery. Solo arma la petición, consume /api/v1/recommend, renderiza cards, tabla y puntos en mapa.
+
+```mermaid
+flowchart LR
+    BQ[(BigQuery<br/>real_estate_listings)]
+    JOB[Cloud Run Job<br/>miad-rag-indexer-job]
+    GCS[(Cloud Storage<br/>miad-paad-rs-index-dev)]
+    ML[MLflow / RAGAS<br/>experimentos]
+    BE[Cloud Run Service<br/>miad-rag-backend<br/>FastAPI]
+    FE[Cloud Run Service<br/>miad-rag-frontend<br/>Streamlit]
+    GEM[Gemini<br/>Embeddings + LLM]
+
+    FE -->|POST /api/v1/recommend| BE
+    BE -->|descarga/carga índice FAISS| GCS
+    BE -->|enriquece IDs/listings| BQ
+    BE --> GEM
+    BE -->|JSON: answer + listings + mapa| FE
+
+    JOB -->|lee listings| BQ
+    JOB -->|genera embeddings| GEM
+    JOB -->|publica index.faiss/index.pkl/manifest| GCS
+    JOB -->|registra métricas offline| ML
+```
