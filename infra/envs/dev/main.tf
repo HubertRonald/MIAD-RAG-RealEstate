@@ -176,7 +176,7 @@ resource "google_secret_manager_secret" "service_config" {
 resource "google_bigquery_dataset" "rag" {
   project                    = var.project_id
   dataset_id                 = var.bigquery_dataset_id
-  location                   = "US"
+  location                   = var.region
   delete_contents_on_destroy = false
   labels                     = var.labels
 }
@@ -212,6 +212,13 @@ resource "google_cloud_run_v2_service" "frontend" {
     containers {
       image = var.frontend_image
 
+      resources {
+        limits = {
+          cpu    = "1"
+          memory = "512Mi"
+        }
+      }
+
       env {
         name  = "BACKEND_URL"
         value = google_cloud_run_v2_service.backend.uri
@@ -244,6 +251,13 @@ resource "google_cloud_run_v2_service" "backend" {
 
     containers {
       image = var.backend_image
+
+      resources {
+        limits = {
+          cpu    = "1"
+          memory = "1Gi"
+        }
+      }
 
       env {
         name  = "BQ_DATASET"
@@ -296,6 +310,13 @@ resource "google_cloud_run_v2_job" "indexer" {
 
       containers {
         image = var.job_image
+
+        resources {
+          limits = {
+            cpu    = "1"
+            memory = "1Gi"
+          }
+        }
 
         env {
           name  = "BQ_DATASET"

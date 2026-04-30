@@ -10,6 +10,8 @@ Este documento describe el mapeo entre el dataset CSV enriquecido y la tabla fin
 - Las columnas del CSV se preservan tal como vienen en origen.
 - Las columnas de BigQuery reflejan el esquema final de almacenamiento.
 
+> Se genera un subconjunto anonimizado del dataset mediante codificación base64 sobre atributos sensibles, preservando estructura y distribución para pruebas del sistema RAG sin exponer datos reales.
+
 ## Tabla de mapeo
 
 | columna_csv | columna_bigquery | tipo_sugerido_csv | tipo_sugerido_bigquery | descripcion |
