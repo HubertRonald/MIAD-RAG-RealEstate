@@ -7,7 +7,7 @@ BUCKET_NAME="${BUCKET_NAME:-miad-paad-rs-staging-dev}"
 DATASET_ID="${DATASET_ID:-ds_miad_rag_rs}"
 TABLE_ID="${TABLE_ID:-real_estate_listings}"
 
-LOCAL_CSV_PATH="${1:-data/samples/real_estate_listings.csv}"
+LOCAL_CSV_PATH="${1:-../samples/real_estate_listings.csv}"
 GCS_OBJECT_NAME="${2:-real_estate_listings.csv}"
 GCS_URI="gs://${BUCKET_NAME}/real_estate_listings/${GCS_OBJECT_NAME}"
 

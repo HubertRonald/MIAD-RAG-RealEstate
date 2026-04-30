@@ -17,7 +17,7 @@ Este documento describe el mapeo entre el dataset CSV enriquecido y la tabla fin
 | columna_csv | columna_bigquery | tipo_sugerido_csv | tipo_sugerido_bigquery | descripcion |
 |---|---|---|---|---|
 | id | id | object | STRING | Identificador único del anuncio (Primary Key). |
-| scraped_at | scraped_at | object | TIMESTAMP | Fecha y hora exacta de la captura del dato (scraping). |
+| scraped_at | scraped_at | object | DATE | Fecha y hora exacta de la captura del dato (scraping). |
 | operation_type | operation_type | object | STRING | Tipo de operación: Venta o Alquiler. |
 | property_type | property_type | object | STRING | Categoría del inmueble (Apartamento, Casa, etc.). |
 | l3 | l3 | object | STRING | Nivel 3 de localización (barrio, zona específica; en algunos casos incluye dirección). |
