@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Entornos virtuales
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Variables de entorno
+.env
+.env.*
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentación y tests
+README.md
+resumenAPI.md
+docs/
+tests/
+pytest.ini
+*.md
+
+# Docker
+docker-compose.yml
+Dockerfile.*
+.dockerignore
+
+# Logs y datos temporales
+logs/
+*.log
+faiss_index/
+docs/mi-coleccion-llm/
+
+# IDE y editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Archivos del proyecto que no se necesitan en producción
+apikey.json
+run_server.sh
+Makefile
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Postman
+tests/postman_tests/
