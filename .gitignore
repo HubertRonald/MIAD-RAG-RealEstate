@@ -796,4 +796,5 @@ zsdoc/data
 /tests/_output/*
 !/tests/_output/.gitkeep
 
-_realstate_ragas/
+# _realstate_ragas/
+requirements_local.txt

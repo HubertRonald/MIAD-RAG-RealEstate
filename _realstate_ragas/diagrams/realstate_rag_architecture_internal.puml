@@ -1,0 +1,171 @@
+@startuml realstate_ragas_architecture
+title Realstate RAGAS Backend — Architecture
+
+skinparam backgroundColor #FAFAFA
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+
+skinparam rectangle {
+    BackgroundColor #FFFDE7
+    BorderColor #B8860B
+    FontColor #333333
+}
+
+skinparam component {
+    BackgroundColor #E3F2FD
+    BorderColor #1565C0
+    FontColor #0D47A1
+}
+
+skinparam database {
+    BackgroundColor #E8F5E9
+    BorderColor #2E7D32
+    FontColor #1B5E20
+}
+
+skinparam package {
+    BackgroundColor transparent
+    BorderColor #999999
+    FontColor #555555
+    FontStyle bold
+}
+
+skinparam arrow {
+    Color #555555
+    FontSize 10
+    FontColor #555555
+}
+
+together {
+    package "API Layer" {
+        component [load_from_csv.py\n<size:10>CSV ingestion</size>] as load_csv
+        component [ask.py\n<size:10>/ask · /recommend\n_services_cache (per collection)</size>] as ask
+        component [validate_load.py\n<size:10>Processing status</size>] as validate
+        component [health.py\n<size:10>Health check</size>] as health
+    }
+
+    package "Service Layer — Ingestion" {
+        rectangle "csv_document_service.py\n- preprocess_dataframe()\n- amenity flag extraction\n- row → Document + metadata\n- geographic context text" as csv_svc
+
+        rectangle "chunking_service.py\n- process_csv_collection()" as chunking
+
+        rectangle "load_documents_service.py\n- load_from_csv()" as load_svc
+
+        rectangle "embedding_service.py\n- create_embeddings() + checkpoint/resume\n- build_vectorstore()\n- load_vectorstore()" as embedding
+    }
+
+    package "Service Layer — Query" {
+        rectangle "rag_graph_service.py\nLangGraph orchestration\n(/ask only)" as rag_graph
+
+        rectangle "retrieval_service.py\n- retrieve_documents()\n- retrieve_with_filters()\n- retrieve_with_scores()\n- PropertyFilters" as retrieval
+
+        rectangle "generation_service.py\n- generate_response()          ← /ask\n- generate_recommendations()  ← /recommend" as generation
+
+        rectangle "query_rewriting_service.py\n(PENDIENTE)" as query_rw  #FFE0E0
+
+        rectangle "reranking_service.py\n(PENDIENTE)" as reranking  #FFE0E0
+
+        rectangle "preference_extraction_service.py\n- extract filters from free text\n- enrich PropertyFilters\n- Modos 2 & 3" as pref_ext
+    }
+
+    package "Utils" {
+        rectangle "utils/norm_barrio_utils.py\n- normalize_barrio()\n- fuzzy match + uppercase" as norm_barrio
+    }
+
+    package "Data Layer" {
+        database "FileStorage\ndocs/realstate_mvd/\nlistings.csv" as file_storage
+
+        database "VectorStore\nFAISS Index\nfaiss_index/realstate_mvd/" as faiss
+
+        database "CacheStore\nlogs/" as logs
+    }
+
+    package "Modelos (Pydantic)" {
+        rectangle "models/ask.py\nAskRequest / AskResponse\nRecommendRequest / RecommendResponse\nListingInfo" as models_ask
+
+        rectangle "models/load_documents.py\nLoadFromCsvRequest" as models_load
+    }
+}
+
+together {
+    cloud "Google AI (Gemini)" {
+        component [gemini-2.5-flash\nChat / Generation] as llm_chat
+        component [gemini-embedding-001\nEmbeddings] as llm_embed
+    }
+}
+
+together {
+    package "Evaluación & Experimentos" {
+        rectangle "RAGAS (Evaluador)\n- context_precision\n- context_recall\n- faithfulness\n- answer_relevancy\n- answer_correctness\n---\n- avg_cosine_similarity (FAISS direct)" as ragas_eval
+
+        database "MLflow\n- experimentos\n- métricas por configuración:\n   RAGAS\n   avg_cosine_similarity\n- comparación parámetros\n\nParámetros:\n - Retrieval (k, filter_config)\n - Generation (max_recommendations, prompt_variant)\n - Embedding (description_truncation)\n - LLM (llm_model, embedding_model, temperature)" as mlflow #E8EAF6
+    }
+}
+
+' ============================================================
+' ARROWS — API → Services
+' ============================================================
+load_csv    --> load_svc      : triggers load_from_csv()
+ask         --> rag_graph     : /ask
+ask         --> pref_ext      : /recommend (Modos 2 & 3)\nextracts filters from question
+ask         --> retrieval     : /recommend → retrieve_with_scores()
+ask         --> generation    : /recommend → generate_recommendations()
+validate    --> logs          : reads processing log
+
+' ============================================================
+' ARROWS — Ingestion pipeline
+' ============================================================
+load_svc    --> csv_svc       : preprocess + convert
+load_svc    --> chunking      : process_csv_collection()
+csv_svc     --> chunking      : List[Document]
+chunking    --> embedding     : chunks
+embedding   --> faiss         : build / save index
+load_svc    --> logs          : persist result JSON
+
+' ============================================================
+' ARROWS — Query pipeline (/recommend)
+' ============================================================
+pref_ext    --> retrieval     : enriched PropertyFilters
+
+' ============================================================
+' ARROWS — Query pipeline (/ask via LangGraph)
+' ============================================================
+rag_graph   --> retrieval     : retrieve_documents()
+rag_graph   --> generation    : generate_response()
+rag_graph   --> query_rw      : rewrite query
+rag_graph   --> reranking     : rerank results
+retrieval   --> faiss         : similarity search\n+ metadata filter
+
+' ============================================================
+' ARROWS — Ingestion data flow
+' ============================================================
+file_storage --> csv_svc      : read CSV
+embedding    --> faiss        : write index
+
+' ============================================================
+' ARROWS — Evaluation
+' ============================================================
+ragas_eval   --> mlflow       : log metrics\nper experiment run
+rag_graph    ..> ragas_eval   : /ask RAG output
+ask          ..> ragas_eval   : /recommend RAG output
+
+' ============================================================
+' ARROWS — LLM
+' ============================================================
+generation   --> llm_chat     : generate_response()\ngenerate_recommendations()
+embedding    --> llm_embed    : embed_documents()
+pref_ext     --> llm_chat     : extract filters\n(temperature=0.0)
+
+' ============================================================
+' ARROWS — Utils
+' ============================================================
+norm_barrio  ..> pref_ext     : normalize barrio (LLM extracted)
+norm_barrio  ..> ask          : normalize barrio (payload)
+
+' ============================================================
+' MODELS used by
+' ============================================================
+models_ask  ..> ask           : request/response models
+models_load ..> load_csv      : LoadFromCsvRequest
+
+@enduml
