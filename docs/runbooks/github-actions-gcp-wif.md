@@ -329,10 +329,70 @@ terraform plan
 
 ## Orden correcto de despliegue (CRÍTICO)
 
-```md
 El orden de despliegue es:
 
 1. Crear Artifact Registry
 2. Ejecutar CI/CD para generar imágenes
 3. Ejecutar Terraform (apply=true)
 4. Ejecutar job de indexación
+
+---
+
+## Secret Manager - versión inicial de Gemini API Key
+
+Terraform crea el recurso lógico del secreto `gemini-api-key`, pero Cloud Run requiere que exista al menos una versión activa del secreto para poder referenciar `versions/latest`.
+
+Por seguridad, el valor real de la API key no se versiona en el repositorio ni en archivos `.tfvars`.
+
+Desde GCP Cloud Shell:
+
+```bash
+export PROJECT_ID="miad-paad-rs-dev"
+
+echo -n "TU_GEMINI_API_KEY" | gcloud secrets versions add gemini-api-key \
+  --project="${PROJECT_ID}" \
+  --data-file=-
+```
+
+Validación:
+
+```bash
+gcloud secrets versions list gemini-api-key \
+  --project="${PROJECT_ID}"
+```
+
+
+---
+
+## Sección de validación operativa
+
+
+### Validación operativa de recursos GCP
+
+Después de ejecutar Terraform y los workflows de despliegue, se puede validar la creación de los recursos principales con los siguientes comandos:
+
+```bash
+export PROJECT_ID="miad-paad-rs-dev"
+
+gcloud storage buckets list --project $PROJECT_ID
+
+gcloud secrets list --project $PROJECT_ID
+
+gcloud iam service-accounts list --project $PROJECT_ID
+
+gcloud run services list \
+  --region us-east4 \
+  --project $PROJECT_ID
+
+gcloud run jobs list \
+  --region us-east4 \
+  --project $PROJECT_ID
+```
+
+Estos comandos permiten verificar:
+
+- Buckets de staging, índice y Terraform state.
+- Secretos requeridos por los servicios.
+- Service accounts para frontend, backend, indexer y GitHub Actions.
+- Servicios Cloud Run desplegados.
+- Cloud Run Job disponible para construcción del índice vectorial.

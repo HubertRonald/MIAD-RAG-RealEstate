@@ -366,6 +366,11 @@ AR --> CRBE
 AR --> CRJOB
 ```
 
+La guía operativa para configurar Workload Identity Federation, Terraform state, Secret Manager, Artifact Registry y validación de recursos GCP se encuentra en:
+
+[docs/runbooks/github-actions-gcp-wif.md](./docs/runbooks/github-actions-gcp-wif.md)
+
+
 ## Flujo de Ejecución del Sistema (RAG Pipeline en Tiempo Real)
 
 Este diagrama de secuencia describe el flujo de ejecución del sistema de recomendación basado en **Retrieval-Augmented Generation (RAG)** en tiempo real. A partir de una consulta en lenguaje natural, el frontend en Cloud Run orquesta una solicitud hacia el backend, donde se realiza el procesamiento semántico, la recuperación de propiedades similares mediante FAISS y el enriquecimiento de datos con BigQuery. Posteriormente, se genera una explicación interpretativa utilizando un modelo LLM (Gemini), integrando contexto estructurado y semántico. Finalmente, los resultados son visualizados en la interfaz mediante mapas y tarjetas, proporcionando una experiencia interactiva y explicable para la toma de decisiones inmobiliarias.
