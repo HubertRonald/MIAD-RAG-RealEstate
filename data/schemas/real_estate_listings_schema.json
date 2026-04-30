@@ -1,6 +1,6 @@
 [
     { "name": "id", "type": "STRING", "mode": "REQUIRED", "description": "Identificador único del anuncio (Primary Key)." },
-    { "name": "scraped_at", "type": "TIMESTAMP", "mode": "NULLABLE", "description": "Fecha y hora exacta de la captura del dato (scraping)." },
+    { "name": "scraped_at", "type": "DATE", "mode": "NULLABLE", "description": "Fecha y hora exacta de la captura del dato (scraping)." },
     { "name": "operation_type", "type": "STRING", "mode": "NULLABLE", "description": "Tipo de operación: Venta o Alquiler." },
     { "name": "property_type", "type": "STRING", "mode": "NULLABLE", "description": "Categoría del inmueble (Apartamento, Casa, etc.)." },
     { "name": "l3", "type": "STRING", "mode": "NULLABLE", "description": "Nivel 3 de localización (barrio, zona específica; en algunos casos incluye dirección)." },
