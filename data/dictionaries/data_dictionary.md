@@ -101,3 +101,22 @@ Este documento describe el mapeo entre el dataset CSV enriquecido y la tabla fin
 - El índice FAISS no reemplaza esta tabla; almacena embeddings y referencias por `property_id`.
 - Las columnas con nombres originales en mayúsculas o con punto se normalizan para BigQuery.
 - Si el CSV conserva listas u objetos serializados, campos como `image_urls`, `amenities` y `geometry` pueden cargarse inicialmente como `STRING`, a excepción de `geometry`, para más información ver [BigQuery: Trabajar con datos geoespaciales](https://docs.cloud.google.com/bigquery/docs/geospatial-data?hl=es#python)
+
+
+## Gestión de Datos
+
+El diccionario de datos y el esquema utilizado en BigQuery se encuentran en:
+
+```text
+data/schemas/real_estate_listings_schema.json
+```
+
+El proceso de carga se realiza desde Cloud Shell mediante:
+
+```text
+data/scripts/load_real_estate_listings.sh
+```
+
+Este script:
+- Sube el CSV a Cloud Storage
+- Inserta los datos en BigQuery usando el esquema definido

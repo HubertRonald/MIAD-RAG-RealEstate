@@ -280,3 +280,59 @@ Más adelante se puede volver al patrón estricto:
 Terraform crea recursos
 GitHub Actions actualiza imágenes
 ```
+
+## Consideraciones de Infraestructura
+
+### Artifact Registry (pre-requisito)
+Antes de ejecutar Terraform, el repositorio de imágenes debe existir en Artifact Registry:
+
+```bash
+gcloud artifacts repositories create miad-rag-repo \
+  --repository-format=docker \
+  --location=us-east4
+```
+
+> Lanzar lo anterior desde la cloud shell cli de GCP
+
+### Configuración de Cloud Run
+
+Los servicios Cloud Run son definidos mediante Terraform, incluyendo:
+
+- Memoria y CPU
+- Variables de entorno
+- Acceso mediante Service Accounts
+- Restricciones de ingreso
+
+Los cambios en recursos (CPU, RAM, timeout) generan nuevas revisiones del servicio sin eliminar el código desplegado.
+
+
+### Escalabilidad
+
+Cloud Run permite configurar:
+
+- min_instances
+- max_instances
+
+Esto se define en Terraform y no afecta la lógica de la aplicación, solo su comportamiento en ejecución.
+
+### Terraform local
+
+Para validar la infraestructura localmente:
+
+```bash
+terraform fmt -recursive
+terraform validate
+terraform plan
+```
+
+---
+
+## Orden correcto de despliegue (CRÍTICO)
+
+```md
+El orden de despliegue es:
+
+1. Crear Artifact Registry
+2. Ejecutar CI/CD para generar imágenes
+3. Ejecutar Terraform (apply=true)
+4. Ejecutar job de indexación
