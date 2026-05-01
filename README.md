@@ -270,6 +270,107 @@ style ING fill:#F1F3F4,stroke:#9AA0A6
 
 > **Nota:** En este proyecto, la capa de análisis no se basa en modelos tradicionales supervisados, sino en un enfoque de recuperación aumentada (RAG), donde el "modelo" está representado por un índice vectorial (FAISS) construido a partir de embeddings generados con Gemini. Este índice permite realizar búsquedas semánticas eficientes sobre las propiedades inmobiliarias, las cuales son posteriormente enriquecidas con datos estructurados desde BigQuery y utilizadas para generar respuestas explicativas mediante un modelo de lenguaje.
 
+## Arquitectura DevOps y Despliegue en GCP
+La arquitectura DevOps separa el ciclo de vida de infraestructura y aplicaciones. La infraestructura se gestiona mediante Terraform con estado remoto en Cloud Storage, mientras que los servicios se despliegan como contenedores en Cloud Run. 
+
+El proceso de integración se realiza mediante GitHub Actions, donde las imágenes son construidas y publicadas en Artifact Registry. La autenticación entre GitHub y GCP se realiza usando Workload Identity Federation, evitando el uso de credenciales estáticas.
+
+El despliegue se restringe a la rama `main`, mientras que las ramas `feature` y `dev` se utilizan para desarrollo e integración. Este enfoque permite reproducibilidad, control de cambios y despliegues seguros en la nube.
+
+```mermaid
+%%{init: {
+  "theme": "base",
+  "flowchart": { "curve": "basis", "nodeSpacing": 60, "rankSpacing": 80 },
+  "themeVariables": { "fontSize": "20px" }
+}}%%
+
+flowchart LR
+
+%% ======================
+%% DEVELOPMENT
+%% ======================
+subgraph DEV["Desarrollo"]
+    FEAT["feature"]
+    DEVBR["dev"]
+    MAIN["main"]
+end
+
+%% ======================
+%% GITHUB
+%% ======================
+subgraph GH["GitHub"]
+    PR1["PR feature → dev"]
+    PR2["PR dev → main"]
+    ACT["GitHub Actions"]
+end
+
+%% ======================
+%% SECURITY
+%% ======================
+subgraph SEC["Seguridad"]
+    WIF["Workload Identity Federation"]
+    SA["sa-github-deployer"]
+    SM["Secret Manager"]
+end
+
+%% ======================
+%% BUILD
+%% ======================
+subgraph BUILD["Build"]
+    DOCKER["Docker Build"]
+    AR["Artifact Registry"]
+end
+
+%% ======================
+%% INFRA
+%% ======================
+subgraph IAC["Infraestructura"]
+    TF["Terraform Dev"]
+    STATE["GCS Terraform State"]
+end
+
+%% ======================
+%% GCP
+%% ======================
+subgraph GCP["Servicios en GCP"]
+    CRFE["Cloud Run frontend"]
+    CRBE["Cloud Run backend"]
+    CRJOB["Cloud Run job indexer"]
+    BQ["BigQuery"]
+    GCS1["GCS staging"]
+    GCS2["GCS index"]
+end
+
+%% ======================
+%% FLOW
+%% ======================
+FEAT --> PR1 --> DEVBR
+DEVBR --> PR2 --> MAIN
+MAIN --> ACT
+
+ACT --> WIF --> SA
+
+ACT --> DOCKER --> AR
+ACT --> TF --> STATE
+
+TF --> CRFE
+TF --> CRBE
+TF --> CRJOB
+TF --> BQ
+TF --> GCS1
+TF --> GCS2
+TF --> SM
+
+AR --> CRFE
+AR --> CRBE
+AR --> CRJOB
+```
+
+La guía operativa para configurar Workload Identity Federation, Terraform state, Secret Manager, Artifact Registry y validación de recursos GCP se encuentra en:
+
+[docs/runbooks/github-actions-gcp-wif.md](./docs/runbooks/github-actions-gcp-wif.md)
+
+
 ## Flujo de Ejecución del Sistema (RAG Pipeline en Tiempo Real)
 
 Este diagrama de secuencia describe el flujo de ejecución del sistema de recomendación basado en **Retrieval-Augmented Generation (RAG)** en tiempo real. A partir de una consulta en lenguaje natural, el frontend en Cloud Run orquesta una solicitud hacia el backend, donde se realiza el procesamiento semántico, la recuperación de propiedades similares mediante FAISS y el enriquecimiento de datos con BigQuery. Posteriormente, se genera una explicación interpretativa utilizando un modelo LLM (Gemini), integrando contexto estructurado y semántico. Finalmente, los resultados son visualizados en la interfaz mediante mapas y tarjetas, proporcionando una experiencia interactiva y explicable para la toma de decisiones inmobiliarias.
@@ -444,11 +545,15 @@ MIAD-RAG-RealEstate/
 │       └── examples/
 │
 ├── data/
-│   ├── schemas/
-│   │   └── bigquery_schema.json
-│   ├── samples/
-│   └── dictionaries/
-│       └── data_dictionary.md
+│   ├── data_dictionary.md
+│   ├── samples
+│   │   └── real_estate_listings.csv
+│   ├── schemas
+│   │   ├── rag_eval_results_schema.json
+│   │   └── real_estate_listings_schema.json
+│   └── scripts
+│       ├── generate_sample.py
+│       └── load_real_estate_listings.sh
 │
 ├── eval/
 │   ├── ragas/
