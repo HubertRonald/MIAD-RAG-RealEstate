@@ -1,0 +1,1 @@
+# Cloud Run Job package for MIAD RAG Real Estate indexer.

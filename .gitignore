@@ -796,7 +796,6 @@ zsdoc/data
 /tests/_output/*
 !/tests/_output/.gitkeep
 
-# End of https://www.toptal.com/developers/gitignore/api/macos,windows,python,r,django,spark,pycharm,intellij,visualstudiocode,terraform,pythonvanilla,circuitpython,ssh,zsh,jupyternotebooks
-
-
-# End of https://www.toptal.com/developers/gitignore/api/python,macos,windows,jupyternotebooks
+# _realstate_ragas/
+requirements_local.txt
+valid_barrios__epsg4326_290426.csv
