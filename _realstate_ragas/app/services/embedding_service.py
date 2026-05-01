@@ -37,14 +37,14 @@ EMBEDDINGS_MODEL = "models/gemini-embedding-001"
 
 BATCH_SIZE     = 50    # ~69 batches para 3,436 docs
 MAX_BATCH_SIZE = 100
-REQUEST_DELAY  = 5     # segundos entre batches — margen seguro bajo 100 RPM
+REQUEST_DELAY  = 15     # segundos entre batches — margen seguro bajo 100 RPM
 
 # =============================================================================
 # PRECIOS EMBEDDINGS (verificar en https://ai.google.dev/pricing)
 # gemini-embedding-001 — precio por millón de tokens (USD)
 # =============================================================================
 EMBEDDING_PRICE_PER_M_TOKENS = 0.025   # $0.025 / 1M tokens
-CHARS_PER_TOKEN              = 4       # Estimación estándar: 1 token ≈ 4 caracteres
+CHARS_PER_TOKEN              = 3.2       # Estimación estándar: 1 token ≈ 4 caracteres, 3.2 obtenido en sample (200) de listings.csv
 
 
 class EmbeddingService:

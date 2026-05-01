@@ -68,16 +68,63 @@ def _get_services(collection: str) -> dict:
         embedding_svc.load_vectorstore(f"./faiss_index/{collection}")
 
         _services_cache[collection] = {
-            "retrieval":   RetrievalService(embedding_svc, k=10),
+            "retrieval":   RetrievalService(embedding_svc, k=5),
             "generation":  GenerationService(),
             "preference":  PreferenceExtractionService(),
             "qrewrite":    QueryRewritingService(),
-            "reranking":   RerankingService(top_k=3),
+            "reranking":   None,   # loaded on demand only when use_reranking=True
         }
 
         print(f"[ServiceCache] Collection '{collection}' ready.")
 
     return _services_cache[collection]
+
+# =============================================================================
+# Shared Classifier function 
+# =============================================================================
+# Used as guardrail for questions out of scope.
+# Classifies whether a question is within scope before retrieval runs. Uses the 
+# cached GenerationService (no extra cost). Returns True if the query is related 
+# to real estate in Montevideo.
+
+# Clearly off-topic topics — fast reject without any LLM call
+_OFFTOPIC_PATTERNS = [
+    "receta", "cocina", "fútbol", "política", "clima", "temperatura",
+    "programación", "código", "música", "película", "restaurante",
+    "médico", "doctor", "enfermedad", "viaje", "vuelo", "hotel",
+]
+
+# Strong real estate signals — fast accept without any LLM call  
+_REALESTATE_PATTERNS = [
+    "apartamento", "casa", "inmueble", "propiedad", "alquiler", "venta",
+    "dormitorio", "baño", "barrio", "m²", "metros", "precio", "piso",
+    "ascensor", "terraza", "cochera", "parrillero", "piscina", "jardín",
+    "pocitos", "carrasco", "centro", "punta carretas", "malvín",
+    "busco", "necesito", "quiero", "buscando", "familia", "niños",
+]
+
+def _is_real_estate_query(question: str) -> bool:
+    q = question.lower()
+
+    # Fast reject — clearly off-topic
+    if any(p in q for p in _OFFTOPIC_PATTERNS):
+        return False
+
+    # Fast accept — clear real estate signal
+    if any(p in q for p in _REALESTATE_PATTERNS):
+        return True
+
+    # Ambiguous — fall back to LLM only as last resort
+    import google.generativeai as genai
+    result = genai.GenerativeModel("gemini-2.0-flash").generate_content(
+        f"""Clasificador binario. Responde ÚNICAMENTE con YES o NO.
+¿Esta consulta podría ser de alguien buscando una propiedad para vivir?
+Ante la duda, responde YES.
+Consulta: {question}"""
+    )
+    raw = result.text.strip()
+    print(f"[Guardrail LLM fallback] '{question}' → '{raw}'", flush=True)
+    return raw.upper().startswith("YES")
 
 
 # =============================================================================
@@ -107,6 +154,25 @@ def basic_rag_processing(
 
     start_time = time.time()
     svc = _get_services(collection)
+
+    # ── Guardrail — reject out-of-scope queries before retrieval ──────────
+    if not _is_real_estate_query(question):
+        return {
+            "question":             question,
+            "final_query":          question,
+            "answer":               "Solo puedo responder consultas sobre el mercado inmobiliario de Montevideo. Intenta de nuevo",
+            "collection":           collection,
+            "files_consulted":      [],
+            "context_docs":         [],
+            "reranker_used":        False,
+            "query_rewriting_used": False,
+            "response_time_sec":    round(time.time() - start_time, 3),
+        }
+    
+    # Lazy-load reranker only if requested
+    if use_reranking and svc["reranking"] is None:
+        from app.services.reranking_service import RerankingService
+        svc["reranking"] = RerankingService(top_k=3)
 
     # RAGGraphService es liviano — solo orquesta servicios ya cacheados.
     rag_graph_service = RAGGraphService(
@@ -257,7 +323,10 @@ def _build_fallback_query(payload: RecommendRequest) -> str:
     if payload.operation_type:
         parts.append(f"en {payload.operation_type}")
     if payload.barrio:
-        parts.append(f"en {payload.barrio}")
+        if isinstance(payload.barrio, list):
+            parts.append(f"en {' o '.join(payload.barrio)}")
+        else:
+            parts.append(f"en {payload.barrio}")
     if payload.min_bedrooms is not None:
         n = payload.min_bedrooms
         parts.append("monoambiente" if n == 0 else f"{n} dormitorios")
@@ -269,8 +338,8 @@ def _build_fallback_query(payload: RecommendRequest) -> str:
 # Observed range of FAISS relevance scores for this corpus.
 # Tune these bounds after the first evaluation run using the
 # avg_cosine_similarity distribution logged in MLflow.
-_SCORE_LOW  = 0.78   # scores at or below this map to match_score=1
-_SCORE_HIGH = 0.92   # scores at or above this map to match_score=100
+_SCORE_LOW  = 0.72   # R9 acceptance threshold — below this fails the requirement
+_SCORE_HIGH = 0.92   # observed ceiling from v1 evaluation corpus
 
 
 def _cosine_to_match_score(score: float) -> int:
@@ -324,17 +393,40 @@ def recommendation_processing(payload: RecommendRequest) -> Dict[str, Any]:
     try:
         from app.services.retrieval_service import PropertyFilters
         from app.utils.norm_barrio_utils import normalize_barrio
-        from app.services.retrieval_service import l2_relevance_to_cosine
 
         start_time = time.time()
         svc = _get_services(payload.collection)
+        print(f"[Timing] services: {time.time()-start_time:.2f}s", flush=True)
+
+        t = time.time()
+        # ── Guardrail — only applies when free text is present (Modos 2 & 3) ─
+        if payload.question and not _is_real_estate_query(payload.question):
+            print(f"[Timing] guardrail: {time.time()-t:.2f}s", flush=True)
+            return {
+                "question":          payload.question,
+                "answer":            "Solo puedo ayudarte con búsquedas de propiedades en Montevideo. Intenta de nuevo",
+                "collection":        payload.collection,
+                "listings_used":     [],
+                "files_consulted":   [],
+                "filters_applied":   {},
+                "response_time_sec": round(time.time() - start_time, 3),
+            }
+        print(f"[Timing] guardrail (passed): {time.time()-t:.2f}s", flush=True)
+
+        
         retrieval_service  = svc["retrieval"]
         generation_service = svc["generation"]
         preference_service = svc["preference"]
 
-        barrio = normalize_barrio(payload.barrio) if payload.barrio else None
+        barrio = None
+        if payload.barrio:
+            if isinstance(payload.barrio, list):
+                barrio = [normalize_barrio(b) for b in payload.barrio]
+            else:
+                barrio = normalize_barrio(payload.barrio)
 
         # --- Construir filtros explícitos desde el payload ---
+        
         explicit_filters = PropertyFilters(
             operation_type      = payload.operation_type,
             property_type       = payload.property_type,
@@ -363,14 +455,18 @@ def recommendation_processing(payload: RecommendRequest) -> Dict[str, Any]:
             has_visitor_parking = payload.has_visitor_parking,
         )
 
+        t = time.time()
         # --- Enriquecer con LLM (Modos 2 y 3; Modo 1 retorna explicit_filters sin cambios) ---
         filters = preference_service.extract(payload.question, explicit_filters)
+        print(f"[Timing] preference extraction: {time.time()-t:.2f}s", flush=True)
 
         # --- Query semántica: texto libre si existe, fallback construido desde filtros ---
         query = payload.question.strip() if payload.question else _build_fallback_query(payload)
 
         # --- Recuperar listings con scores de relevancia semántica ---
+        t = time.time()
         doc_score_pairs = retrieval_service.retrieve_with_scores(query, filters)
+        print(f"[Timing] retrieval: {time.time()-t:.2f}s", flush=True)
 
         if not doc_score_pairs:
             return {
@@ -391,12 +487,15 @@ def recommendation_processing(payload: RecommendRequest) -> Dict[str, Any]:
         semantic_scores = [score for _,   score in doc_score_pairs]
 
         # --- Generar recomendaciones (scores threaded through to listings_used) ---
+        t = time.time()
         result = generation_service.generate_recommendations(
             question            = query,
             retrieved_docs      = docs,
             max_recommendations = payload.max_recommendations,
             semantic_scores     = semantic_scores,
         )
+        print(f"[Timing] generation: {time.time()-t:.2f}s", flush=True)
+
 
         # --- Inject user-facing match_score and rank into each listing --------
         # This conversion lives here (router) — services deal in raw floats only.
@@ -406,8 +505,7 @@ def recommendation_processing(payload: RecommendRequest) -> Dict[str, Any]:
         for rank_pos, listing_dict in enumerate(result["listings_used"], start=1):
             raw_score = listing_dict.get("semantic_score")
             listing_dict["match_score"] = (
-                _cosine_to_match_score(l2_relevance_to_cosine(raw_score))
-                if raw_score is not None else None
+                _cosine_to_match_score(raw_score) if raw_score is not None else None
             )
             listing_dict["rank"] = rank_pos
             enriched_listings.append(listing_dict)

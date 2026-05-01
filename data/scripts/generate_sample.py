@@ -4,7 +4,7 @@ import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-INPUT_FILE = os.path.join(BASE_DIR, "valid_barrios__epsg4326_210426.csv")
+INPUT_FILE = os.path.join(BASE_DIR, "valid_barrios__epsg4326_290426.csv")
 OUTPUT_FILE = os.path.join(BASE_DIR, "../samples/real_estate_listings.csv")
 
 # columnas que NO se deben anonimizar (aunque sean string)

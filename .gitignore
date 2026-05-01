@@ -798,3 +798,4 @@ zsdoc/data
 
 # _realstate_ragas/
 requirements_local.txt
+valid_barrios__epsg4326_290426.csv

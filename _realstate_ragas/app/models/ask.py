@@ -6,7 +6,7 @@ incluyendo peticiones, respuestas y metadatos de contexto.
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Union
 
 
 class AskRequest(BaseModel):
@@ -91,7 +91,11 @@ class RecommendRequest(BaseModel):
     # Segmentación
     operation_type: Optional[str]   = Field(default=None, example="venta")
     property_type:  Optional[str]   = Field(default=None, example="apartamentos")
-    barrio:         Optional[str]   = Field(default=None, example="POCITOS")
+    barrio:         Optional[Union[str, List[str]]] = Field(
+        default=None,
+        description="Barrio único (ej: 'POCITOS') o lista de barrios (ej: ['POCITOS', 'CORDON'])",
+        example="POCITOS",
+    )
 
     # Rangos numéricos
     min_price:    Optional[float]   = Field(default=None, example=None)
@@ -152,7 +156,9 @@ class ListingInfo(BaseModel):
     """
     id:              Optional[str]   = None
     barrio:          Optional[str]   = None
+    barrio_confidence:  Optional[str]  = None  # 'consistent' | 'genuine_ambiguity' | etc.
     operation_type:  Optional[str]   = None
+    is_dual_intent:     Optional[bool] = None  # True if available for both sale and rent
     property_type:   Optional[str]   = None
     price_fixed:     Optional[float] = None
     currency_fixed:  Optional[str]   = None

@@ -57,8 +57,9 @@ sin explicaciones.
 - Usa null para campos no mencionados o inciertos. Nunca inventes valores.
 - Para campos de texto (operation_type, property_type), usa exactamente los \
 valores permitidos.
-- Los precios están en USD para venta; en USD o UYU para alquiler \
-(interpreta el contexto).
+- Si el usuario menciona un precio, interpreta la moneda según el contexto \
+(USD para venta, USD o UYU para alquiler). Si no se menciona operación \
+explícitamente, deja operation_type como null aunque haya un precio.
 - Las distancias están en metros.
 - Solo marca amenities como true si el usuario las solicita explícitamente.
 
@@ -102,7 +103,7 @@ POCITOS, PRADO, PUNTA CARRETAS, PUNTA GORDA, REDUCTO, SAYAGO,
 TRES CRUCES, UNION, VILLA ESPAÑOLA, VILLA MUÑOZ
 
 EJEMPLOS:
-  Input:  "busco apto de 2 dorm en pocitos, hasta 150 mil dólares, con piscina"
+  Input:  "busco apto de 2 dorm en pocitos, hasta 150 mil dólares, con piscina" # "apto" = abreviatura explícita de apartamento
   Output: {"operation_type": null, "property_type": "apartamentos",
            "barrio": "POCITOS", "max_price": 150000, "min_bedrooms": 2,
            "max_bedrooms": 2, "has_pool": true}
@@ -113,6 +114,9 @@ EJEMPLOS:
 
   Input:  "quiero algo cerca de la playa"
   Output: {"max_dist_playa": 500}
+
+  Input:  "que tenga ascensor y sea moderno, pensando en una familia con niños"
+  Output: {"has_elevator": true}
 """
 
 
@@ -269,9 +273,8 @@ class PreferenceExtractionService:
 
             human_text = (
                 f"Texto del usuario: {question}\n\n"
-                "Extrae las preferencias como JSON. Incluye solo los campos "
-                "con valores explícitamente mencionados o claramente inferibles "
-                "del texto."
+                "Extrae las preferencias como JSON. Incluye solo los campos con valores explícitamente mencionados en el texto."
+                "NUNCA inferir barrio — solo extraerlo si el usuario lo menciona textualmente."
             )
             
             messages  = [

@@ -11,10 +11,10 @@ precio, amenities) con búsqueda por similitud semántica.
 """
  
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Any, Tuple
+from typing import Callable, Dict, List, Optional, Any, Tuple, Union
 from langchain.schema import Document
 from app.services.embedding_service import EmbeddingService
-
+from langsmith import traceable
 
 # FILTROS ESTRUCTURADOS PARA LISTINGS 
 @dataclass
@@ -28,7 +28,9 @@ class PropertyFilters:
     Campos de segmentación (exact match):
         operation_type  : "venta" | "alquiler"
         property_type   : "apartamentos" | "casas"
-        barrio          : nombre exacto del barrio (ej: "POCITOS")
+        barrio          : nombre exacto del barrio (ej: "POCITOS") o lista
+                          de barrios (ej: ["POCITOS", "CORDON"]) para filtrar
+                          múltiples zonas simultáneamente.
  
     Campos numéricos (rangos):
         max_price       : precio máximo (en la moneda de la operación)
@@ -49,7 +51,7 @@ class PropertyFilters:
     # Segmentación
     operation_type: Optional[str] = None
     property_type:  Optional[str] = None
-    barrio:         Optional[str] = None
+    barrio:         Optional[Union[str, List[str]]] = None
  
     # Precio
     min_price:    Optional[float] = None
@@ -141,7 +143,11 @@ class PropertyFilters:
                     return False
  
             if filters.barrio:
-                if meta.get("barrio") != filters.barrio:
+                barrios = (
+                    [filters.barrio] if isinstance(filters.barrio, str)
+                    else filters.barrio
+                )
+                if meta.get("barrio_fixed") not in barrios:
                     return False
  
             # --- Precio ---
@@ -210,28 +216,30 @@ class PropertyFilters:
             return True
  
         return _filter
-
-
+ 
+ 
+# CONVERSIÓN DE SCORES
 def l2_relevance_to_cosine(relevance_score: float) -> float:
     """
-    Converts a LangChain L2 relevance score to true cosine similarity.
+    Convierte un score de relevancia L2 de LangChain a similitud coseno real.
 
-    LangChain normalizes FAISS L2 distances via:
+    LangChain normaliza las distancias L2 de FAISS via:
         relevance_score = 1 / (1 + L2_distance)
 
-    For normalized vectors (which LangChain enforces before indexing),
-    L2 distance and cosine similarity relate as:
+    Para vectores normalizados (gemini-embedding-001 los normaliza),
+    L2 y coseno se relacionan como:
         cosine_similarity = 1 - (L2_distance² / 2)
 
-    Combining both:
-        L2_distance      = (1 / relevance_score) - 1
+    Combinando ambas relaciones:
+        L2_distance       = (1 / relevance_score) - 1
         cosine_similarity = 1 - (L2_distance² / 2)
 
     Args:
-        relevance_score: LangChain L2 relevance score in (0, 1].
+        relevance_score: Score normalizado de LangChain en (0, 1].
 
     Returns:
-        Cosine similarity in [0, 1]. Values near 1.0 = near-identical vectors.
+        Similitud coseno en [0, 1]. Valores cercanos a 1.0 indican
+        vectores casi idénticos.
     """
     if relevance_score <= 0:
         return 0.0
@@ -239,7 +247,7 @@ def l2_relevance_to_cosine(relevance_score: float) -> float:
     cosine = 1.0 - (l2_distance ** 2) / 2.0
     return max(0.0, min(1.0, cosine))
 
- 
+
 # SERVICIO DE RETRIEVAL
 class RetrievalService:
     """
@@ -309,7 +317,7 @@ class RetrievalService:
         """
         return self.retriever.invoke(query)
     
-    
+    @traceable(name="faiss_retrieval_filtered")
     def retrieve_with_filters(
         self,
         query: str,
@@ -361,7 +369,7 @@ class RetrievalService:
  
         return docs
 
-
+    @traceable(name="faiss_retrieval_with_scores") 
     def retrieve_with_scores(
         self,
         query: str,

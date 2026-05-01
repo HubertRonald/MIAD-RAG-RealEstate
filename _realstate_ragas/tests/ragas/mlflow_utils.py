@@ -13,6 +13,7 @@ Responsabilidades:
 """
 
 import mlflow
+import mlflow.data
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
@@ -53,15 +54,16 @@ def build_run_name(config: Dict[str, Any]) -> str:
     """
     Construye un nombre descriptivo para el run de MLflow.
 
-    Formato: {collection}_k{k}_fk{fetch_k}_{variant}_{timestamp}
-    Ejemplo: realstate_mvd_k5_fk100_default_1430
+    Formato: {collection}_k{k}_fk{fetch_k}_{model}_{variant}_{timestamp}
+    Ejemplo: realstate_mvd_k5_fk100_gemini-2.5-flash_default_1430
     """
     collection = config.get("collection", "unk")
     k          = config.get("k", "?")
     fetch_k    = config.get("fetch_k", "?")
+    model      = config.get("llm_model", "unk").split("/")[-1]  # strip path prefix if any
     variant    = config.get("prompt_variant", "default")
     ts         = datetime.now().strftime("%H%M")
-    return f"{collection}_k{k}_fk{fetch_k}_{variant}_{ts}"
+    return f"{collection}_k{k}_fk{fetch_k}_{model}_{variant}_{ts}"
 
 
 # ====================================================================
@@ -161,11 +163,143 @@ def log_dataset_info(
     endpoint: str = "ask",
     from_cache: bool = False,
 ) -> None:
-    """Loguea metadatos del dataset de evaluación al run activo."""
+    """Loguea metadatos básicos del dataset de evaluación al run activo."""
     if mlflow.active_run() is None:
         return
     mlflow.log_param(f"{endpoint}_dataset_samples", str(n_samples))
     mlflow.log_param(f"{endpoint}_dataset_from_cache", str(from_cache))
+
+
+def log_evaluation_dataset(
+    samples: list,
+    endpoint: str = "ask",
+    collection: str = "realstate_mvd",
+    k: int = 3,
+) -> None:
+    """
+    Loguea el dataset de evaluación a MLflow usando mlflow.log_input().
+
+    Esto popula la columna 'Dataset' en la UI de MLflow, permitiendo
+    rastrear exactamente qué preguntas y referencias se usaron en cada run.
+
+    Cada muestra se convierte a una fila del DataFrame con columnas:
+      - user_input        : pregunta del usuario
+      - reference         : respuesta de referencia esperada
+      - n_contexts        : número de documentos recuperados
+
+    Args:
+        samples    : Lista de SingleTurnSample del EvaluationDataset.
+        endpoint   : "ask" o "recommend" — prefijo del nombre del dataset.
+        collection : Nombre de la colección FAISS usada.
+        k          : Valor de k usado en retrieval.
+    """
+    if mlflow.active_run() is None:
+        return
+
+    try:
+        import pandas as pd
+
+        rows = []
+        for s in samples:
+            rows.append({
+                "user_input":  s.user_input,
+                "reference":   s.reference,
+                "n_contexts":  len(s.retrieved_contexts) if s.retrieved_contexts else 0,
+            })
+
+        df           = pd.DataFrame(rows)
+        dataset_name = f"eval_{endpoint}_{collection}_k{k}"
+        mlflow_dataset = mlflow.data.from_pandas(
+            df,
+            name=dataset_name,
+            targets="reference",
+        )
+        mlflow.log_input(mlflow_dataset, context="evaluation")
+        print(f"  [MLflow] Dataset logged: '{dataset_name}' ({len(rows)} samples)")
+
+    except Exception as e:
+        # Non-fatal — dataset logging is informational
+        print(f"  [MLflow] Warning: could not log dataset ({e})")
+
+
+def log_model_info(config: Dict[str, Any]) -> None:
+    """
+    Loguea información del modelo como tags en el run activo de MLflow.
+
+    La columna 'Model' en MLflow solo se popula con modelos registrados
+    como artefactos. Como Gemini es una API externa, usamos tags estándar
+    que aparecen en la columna Tags y en el panel de detalles del run.
+
+    Tags logueados:
+      model.llm         : nombre del modelo de generación
+      model.embeddings  : nombre del modelo de embeddings
+      model.temperature : temperatura usada en evaluación
+      model.k           : número de documentos recuperados
+      model.fetch_k     : candidatos vectoriales pre-filtrado
+
+    Args:
+        config: Diccionario de parámetros del experimento (experiment_config).
+    """
+    if mlflow.active_run() is None:
+        return
+
+    mlflow.set_tags({
+        "model.llm":         config.get("llm_model", "unknown"),
+        "model.embeddings":  config.get("embedding_model", "unknown"),
+        "model.temperature": str(config.get("temperature", 0.0)),
+        "model.k":           str(config.get("k", 3)),
+        "model.fetch_k":     str(config.get("fetch_k", 60)),
+    })
+
+
+def log_model_artifact(config: Dict[str, Any]) -> None:
+    """
+    Loguea la configuración del pipeline RAG como artefacto JSON en MLflow.
+
+    Usa mlflow.log_dict() en lugar de pyfunc.log_model() porque este es
+    un artefacto de documentación (no hace inferencia real), y log_dict
+    evita dos warnings de MLflow 3.x:
+      - artifact_path deprecation (pyfunc.log_model usa name= en 3.x)
+      - CloudPickle warning al pasar un objeto Python como python_model
+
+    El JSON aparece en la pestaña Artifacts del run bajo rag_model/.
+    Para registrar un modelo real en el Model Registry, reemplazar
+    log_dict con pyfunc.log_model usando el patrón models-from-code
+    de MLflow 3.x.
+
+    Args:
+        config: Diccionario de parámetros del experimento (experiment_config).
+    """
+    if mlflow.active_run() is None:
+        return
+
+    try:
+        model_config = {
+            "system":                 "Realstate RAG — Montevideo",
+            "pipeline":               "/ask (LangGraph) | /recommend (linear)",
+            "llm_model":              config.get("llm_model"),
+            "embedding_model":        config.get("embedding_model"),
+            "temperature_eval":       config.get("temperature"),
+            "temperature_production": 0.2,
+            "k":                      config.get("k"),
+            "fetch_k":                config.get("fetch_k"),
+            "max_recommendations":    config.get("max_recommendations"),
+            "prompt_variant":         config.get("prompt_variant"),
+            "description_truncation": config.get("description_truncation"),
+            "collection":             config.get("collection"),
+            "index_type":             "FAISS IndexFlatL2",
+            "note": (
+                "Documentation artifact — describes the RAG pipeline configuration. "
+                "For inference use the /ask and /recommend endpoints directly."
+            ),
+        }
+
+        mlflow.log_dict(model_config, "rag_model/model_config.json")
+        print(f"  [MLflow] Model artifact logged: gemini/{config.get('llm_model')}")
+
+    except Exception as e:
+        # Non-fatal — model logging is informational
+        print(f"  [MLflow] Warning: could not log model artifact ({e})")
 
 
 # ====================================================================

@@ -2,7 +2,8 @@
 Fixtures de Evaluación — Sistema RAG Inmobiliario Montevideo
 ============================================================
 
-Este módulo contiene fixtures compartidas para tests de evaluación con RAGAS.
+Reemplaza el conftest.py original (orientado a PDF/Markdown) con fixtures
+adaptadas al sistema de listings inmobiliarios.
 
 FIXTURES PRINCIPALES
 ────────────────────
@@ -53,6 +54,12 @@ from pathlib import Path
 from datetime import datetime
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings(
+    "ignore",
+    message=".*position_ids.*",
+    category=UserWarning,
+)
+
 
 from ragas import SingleTurnSample, EvaluationDataset
 from ragas.llms import LangchainLLMWrapper
@@ -69,6 +76,9 @@ from tests.ragas.mlflow_utils import (
     log_experiment_params,
     log_ragas_metrics,
     log_dataset_info,
+    log_evaluation_dataset,
+    log_model_info,
+    log_model_artifact,
     print_run_summary,
 )
 from tests.ragas.thresholds import (
@@ -77,7 +87,7 @@ from tests.ragas.thresholds import (
     RAGAS_THRESHOLDS,
 )
 
-# Importaciones opcionales — OJO servicios PENDIENTE en el diagrama de arquitectura
+# Importaciones opcionales — servicios PENDIENTE en el diagrama de arquitectura
 try:
     from app.services.rag_graph_service import RAGGraphService
     _HAS_RAG_GRAPH = True
@@ -106,7 +116,7 @@ def experiment_config() -> Dict[str, Any]:
     """
     Parámetros del experimento leídos desde variables de entorno.
 
-    Permite ejecutar el mismo conjunto de pruebas con distintas configuraciones
+    Permite ejecutar la misma suite de tests con distintas configuraciones
     sin modificar código:
         EVAL_K=5 EVAL_FETCH_K=100 pytest tests/ragas/
 
@@ -138,14 +148,14 @@ def mlflow_run(experiment_config):
     """
     Gestiona el ciclo de vida del run MLflow para toda la sesión de pytest.
 
-    autouse=True  se activa automáticamente sin que los tests lo pidan.
-    scope="session"  un único run por ejecución de pytest.
+    autouse=True → se activa automáticamente sin que los tests lo pidan.
+    scope="session" → un único run por ejecución de pytest.
 
     Flujo:
       1. Crea/recupera el experimento MLflow.
       2. Inicia el run con nombre descriptivo.
       3. Loguea todos los parámetros del experimento.
-      4. yield,  los tests corren con el run activo.
+      4. yield → los tests corren con el run activo.
       5. Al finalizar la sesión, cierra el run (éxito o fallo).
 
     Los tests no necesitan conocer MLflow — save_metric_to_report()
@@ -159,6 +169,8 @@ def mlflow_run(experiment_config):
 
     with mlflow.start_run(experiment_id=experiment_id, run_name=run_name) as run:
         log_experiment_params(experiment_config)
+        log_model_info(experiment_config)
+        log_model_artifact(experiment_config)
         print(f"\n[MLflow] Run started: {run.info.run_id}")
         print(f"[MLflow] Run name: {run_name}")
         print(f"[MLflow] Config: {experiment_config}")
@@ -275,7 +287,10 @@ def ask_rag_system(experiment_config, _embedding_service):
         kwargs["query_rewriting_service"] = QueryRewritingService()
         kwargs["rewriting_strategy"] = "few_shot"
 
-    if _HAS_RERANKING:
+
+    # To evaluate with reranking active: EVAL_USE_RERANKING=true pytest tests/ragas/
+    use_reranking = os.getenv("EVAL_USE_RERANKING", "false").lower() == "true"
+    if _HAS_RERANKING and use_reranking:
         kwargs["reranking_service"] = RerankingService(top_k=3)
         kwargs["use_reranking"] = True
 
@@ -343,6 +358,7 @@ def evaluation_dataset(ask_rag_system, experiment_config) -> EvaluationDataset:
             samples = _load_samples_from_cache(cache_file)
             print(f"[eval_ask] Loaded {len(samples)} samples from cache.")
             log_dataset_info(len(samples), endpoint="ask", from_cache=True)
+            log_evaluation_dataset(samples, endpoint="ask", collection=collection, k=k)
             return EvaluationDataset(samples=samples)
         except Exception as e:
             print(f"[eval_ask] Cache load failed ({e}). Regenerating...")
@@ -370,8 +386,74 @@ def evaluation_dataset(ask_rag_system, experiment_config) -> EvaluationDataset:
 
     _save_samples_to_cache(samples, cache_file)
     log_dataset_info(len(samples), endpoint="ask", from_cache=False)
+    log_evaluation_dataset(
+        samples,
+        endpoint="ask",
+        collection=collection,
+        k=k,
+    )
     print(f"[eval_ask] Dataset built: {len(samples)} samples.")
     return EvaluationDataset(samples=samples)
+
+
+# ====================================================================
+# HELPERS DE QUERY — fallback para mode 1 (question vacía)
+# ====================================================================
+
+def _build_fallback_query(filter_kwargs: Dict[str, Any]) -> str:
+    """
+    Construye una query semántica en español desde filter_kwargs cuando
+    entry["question"] == "" (mode 1 — solo filtros estructurados).
+
+    Necesario porque retrieve_with_filters("", filters) embeds una cadena
+    vacía, produciendo un vector sin señal semántica. Con una query descriptiva
+    el ranking FAISS dentro del conjunto filtrado es más relevante, y RAGAS
+    answer_relevancy requiere un user_input no vacío para evaluar correctamente.
+    """
+    parts: List[str] = []
+    prop_raw = filter_kwargs.get("property_type", "propiedad")
+    prop = prop_raw.rstrip("s") if prop_raw.endswith("s") else prop_raw
+    op_type = filter_kwargs.get("operation_type", "")
+    barrio  = filter_kwargs.get("barrio", "")
+    if isinstance(barrio, list):
+        barrio_str = " o ".join(barrio)
+    else:
+        barrio_str = barrio
+    base = prop
+    if op_type:
+        base += f" en {op_type}"
+    if barrio_str:
+        base += f" en {barrio_str}"
+    parts.append(base)
+
+    min_bed = filter_kwargs.get("min_bedrooms")
+    max_bed = filter_kwargs.get("max_bedrooms")
+    if min_bed is not None and max_bed is not None and min_bed == max_bed:
+        parts.append("monoambiente" if min_bed == 0 else f"{min_bed} dormitorios")
+    elif min_bed is not None and max_bed is not None:
+        parts.append(f"{min_bed} a {max_bed} dormitorios")
+    elif min_bed is not None:
+        parts.append(f"mínimo {min_bed} dormitorios")
+    elif max_bed is not None:
+        parts.append("monoambiente" if max_bed == 0 else f"hasta {max_bed} dormitorios")
+
+    amenity_map = {
+        "has_elevator":   "ascensor",
+        "has_parking":    "cochera",
+        "has_pool":       "piscina",
+        "has_parrillero": "parrillero",
+        "has_gym":        "gimnasio",
+        "has_terrace":    "terraza",
+    }
+    amenities = [label for key, label in amenity_map.items() if filter_kwargs.get(key)]
+    if amenities:
+        parts.append("con " + " y ".join(amenities))
+
+    max_price = filter_kwargs.get("max_price")
+    if max_price:
+        parts.append(f"hasta {max_price:,} USD")
+
+    return ", ".join(parts)
 
 
 # ====================================================================
@@ -410,6 +492,7 @@ def evaluation_dataset_recommend(
             samples = _load_samples_from_cache(cache_file)
             print(f"[eval_recommend] Loaded {len(samples)} samples from cache.")
             log_dataset_info(len(samples), endpoint="recommend", from_cache=True)
+            log_evaluation_dataset(samples, endpoint="recommend", collection=collection, k=k)
             return EvaluationDataset(samples=samples)
         except Exception as e:
             print(f"[eval_recommend] Cache load failed ({e}). Regenerating...")
@@ -419,17 +502,29 @@ def evaluation_dataset_recommend(
     samples = []
 
     for idx, entry in enumerate(RECOMMEND_QUESTIONS, 1):
-        print(f"  [{idx}/{len(RECOMMEND_QUESTIONS)}] {entry['question'][:70]}...")
+        raw_question = entry["question"]
+        filter_kwargs = entry.get("filter_kwargs", {})
+
+        # Mode 1 — question vacía: construir query semántica desde los filtros.
+        # Necesario para (a) retrieval con señal, (b) prompt de generación no vacío,
+        # (c) user_input válido para RAGAS answer_relevancy.
+        if not raw_question.strip():
+            semantic_query = _build_fallback_query(filter_kwargs)
+            print(f"  [{idx}/{len(RECOMMEND_QUESTIONS)}] [mode1-fallback] {semantic_query[:70]}...")
+        else:
+            semantic_query = raw_question
+            print(f"  [{idx}/{len(RECOMMEND_QUESTIONS)}] {raw_question[:70]}...")
+
         try:
-            filters = PropertyFilters(**entry.get("filter_kwargs", {}))
-            docs    = retrieval_service.retrieve_with_filters(entry["question"], filters)
+            filters = PropertyFilters(**filter_kwargs)
+            docs    = retrieval_service.retrieve_with_filters(semantic_query, filters)
             result  = generation_service.generate_recommendations(
-                entry["question"],
+                semantic_query,
                 docs,
                 max_recommendations=max_rec,
             )
             samples.append(SingleTurnSample(
-                user_input         = entry["question"],
+                user_input         = semantic_query,
                 retrieved_contexts = result["context"],
                 response           = result["answer"],
                 reference          = entry["reference"],
@@ -443,6 +538,12 @@ def evaluation_dataset_recommend(
 
     _save_samples_to_cache(samples, cache_file)
     log_dataset_info(len(samples), endpoint="recommend", from_cache=False)
+    log_evaluation_dataset(
+        samples,
+        endpoint="recommend",
+        collection=collection,
+        k=k,
+    )
     print(f"[eval_recommend] Dataset built: {len(samples)} samples.")
     return EvaluationDataset(samples=samples)
 

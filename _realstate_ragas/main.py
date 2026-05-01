@@ -9,6 +9,13 @@ integrando todos los routers y configurando middleware para CORS.
 # IMPORTANTE: Debe ser lo primero para que las credenciales estén disponibles
 from dotenv import load_dotenv
 import os
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    force=True,  
+)
+
 
 # Cargar variables de entorno desde .env
 load_dotenv()
@@ -41,7 +48,6 @@ ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "https://misw4411-frontend-33.web.app",
 ]
 
 # ==================== CONFIGURACIÓN DE MIDDLEWARE ====================

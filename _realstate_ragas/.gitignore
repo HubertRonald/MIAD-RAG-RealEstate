@@ -11,7 +11,7 @@ apikey.json
 
 # Directorios generados automáticamente
 docs/
-faiss_index/
+#faiss_index/
 logs/
 
 # Python
@@ -108,7 +108,7 @@ lerna-debug.log*
 
 
 # Local testing scripts (ABC)
-local_tests/
+local_tests_ignore/
 *.local.py
 *_local.py
 *.local.*

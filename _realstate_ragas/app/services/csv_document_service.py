@@ -33,8 +33,9 @@ COLUMNS_TO_DROP = [
     "seller_name", "seller_type", "seller_id",
     # Geometría redundante (lat/lon ya están como numéricos)
     "geometry",
-    # Códigos administrativos internos (nombres en minúsculas desde el CSV)
-    "nrobarrio", "codba", "zona_legal", "departamen", "seccion_pol",
+    # barrio is replaced with barrio_fixed + Códigos administrativos internos (nombres en minúsculas desde el CSV)
+    "barrio", "nrobarrio", "codba", "barrio_check",
+    "status", "zona_legal", "departamen", "seccion_pol",
     # Precios sin limpiar (sustituidos por price_fixed / currency_fixed)
     "price", "currency",
     # Amenities como texto crudo (se decodifican en flags binarios)
@@ -128,8 +129,13 @@ ALL_AMENITY_FLAGS = list(AMENITY_PIPE_FLAGS.keys()) + [
 METADATA_FIELDS = [
     # Identificadores
     "id",
-    # Segmentación principal (columna 'barrio' en minúsculas, valores en mayúsculas)
-    "operation_type", "property_type", "barrio",
+    # Segmentación principal
+    "operation_type", "property_type", "barrio_fixed",
+    # Calidad del barrio — resultado del pipeline de limpieza geoespacial
+    # Valores: 'consistent' | 'no_barrio_in_text' | 'genuine_ambiguity' | 'marketing_inflation'
+    "barrio_confidence",
+    # Operación dual — True si el listing está disponible para venta Y alquiler
+    "is_dual_intent",
     # Coordenadas
     "lat", "lon",
     # Precio
@@ -275,7 +281,7 @@ def _build_property_summary(row: pd.Series) -> str:
 
     prop   = PROPERTY_LABEL.get(_safe(row.get("property_type"), ""), "propiedad")
     op     = OPERATION_LABEL.get(_safe(row.get("operation_type"), ""), "")
-    barrio = _safe(row.get("barrio"), "")   # columna 'barrio' (lowercase)
+    barrio = _safe(row.get("barrio_fixed"), "")   # corrected ground truth barrio
 
     header = f"{prop.capitalize()} {op}".strip()
     if barrio:
@@ -438,7 +444,7 @@ def _build_page_content(row: pd.Series) -> str:
       3. Amenities presentes
       4. Contexto urbano/geográfico
       5. Título original
-      6. Descripción original (truncada a 800 chars)
+      6. Descripción original (truncada a 5000 chars)
     """
     sections = []
 
@@ -461,15 +467,40 @@ def _build_page_content(row: pd.Series) -> str:
     if geo:
         sections.append(geo)
 
-    title = _safe(row.get("title"), "")
+    # Dual intent note — appears before title so it's prominent in the embedding
+    if _safe(row.get("is_dual_intent"), False):
+        sections.append("Disponible para venta y alquiler.")
+
+    # Title and description — use cleaned versions for marketing_inflation listings
+    # (false premium barrio name replaced with barrio_fixed in the cleaning pipeline).
+    # For all other listings, use original title and description.
+    is_marketing_inflation = (
+        _safe(row.get("barrio_confidence"), "") == "marketing_inflation"
+    )
+
+    title_field = "title_clean" if is_marketing_inflation else "title"
+    desc_field  = "desc_clean"  if is_marketing_inflation else "description"
+
+    title = _safe(row.get(title_field), "") or _safe(row.get("title"), "")
     if title:
         sections.append(f"Título: {str(title).strip()}")
 
-    description = _safe(row.get("description"), "")
+    description = _safe(row.get(desc_field), "") or _safe(row.get("description"), "")
+
+    # Maximum description length before truncation.
+    # Gemini embedding-001 limit: 2048 tokens.
+    # At 3.2 chars/token (measured on 200-doc sample), non-description content
+    # peaks at ~286 tokens (full corpus), leaving ~1,762 tokens for description.
+    # 5,000 chars ≈ 1,562 tokens — well within budget with margin to spare.
+    # In practice, 0/3,377 listings exceed this; cap is purely defensive. 
+    # In place in case we decide to try other embedding models
+
+
+    MAX_DESC_CHARS = 5_000
     if description:
         desc_text = str(description).strip()
-        if len(desc_text) > 800:
-            desc_text = desc_text[:800] + "..."
+        if len(desc_text) > MAX_DESC_CHARS:
+            desc_text = desc_text[:MAX_DESC_CHARS] + "..."
         sections.append(f"Descripción: {desc_text}")
 
     return "\n".join(sections)
@@ -554,8 +585,8 @@ class CSVDocumentService:
             df = df[df["property_type"] == property_type].copy()
             print(f"[filter] property_type='{property_type}': {len(df)} filas")
         if barrio:
-            df = df[df["barrio"] == barrio].copy()   # columna lowercase, valores uppercase
-            print(f"[filter] barrio='{barrio}': {len(df)} filas")
+            df = df[df["barrio_fixed"] == barrio].copy()
+            print(f"[filter] barrio_fixed='{barrio}': {len(df)} filas")
 
         if len(df) == 0:
             print("[WARNING] El filtro dejó 0 filas.")
@@ -609,7 +640,7 @@ class CSVDocumentService:
         return {
             "operation_types": sorted(df["operation_type"].dropna().unique().tolist()),
             "property_types":  sorted(df["property_type"].dropna().unique().tolist()),
-            "barrios":         sorted(df["barrio"].dropna().unique().tolist()),
+            "barrios":         sorted(df["barrio_fixed"].dropna().unique().tolist()),
             "total_listings":  len(df),
         }
 
