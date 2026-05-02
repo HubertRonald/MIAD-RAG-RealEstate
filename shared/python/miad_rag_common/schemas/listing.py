@@ -2,29 +2,39 @@ from __future__ import annotations
 
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class ListingInfo(BaseModel):
     """
-    Metadata estructurada de una propiedad recomendada.
+    Metadata estructurada de un listing usado en una recomendación.
 
-    Este modelo debe ser amigable para:
-    - cards del frontend,
-    - tabla de resultados,
-    - mapa,
-    - debugging de scores semánticos.
+    SCORES
+    ──────
+    Dos capas de scores, con propósitos distintos:
+
+    Internos (raw floats — útiles para MLflow, debugging y reranking futuro):
+      semantic_score : Relevance score de FAISS normalizado a [0, 1] por
+                       LangChain. Para índices L2: 1 / (1 + distance).
+                       Para índices coseno: cosine similarity directamente.
+                       No exponer este valor directamente al usuario.
+      rerank_score   : Score del cross-encoder cuando reranking está activo.
+                       Escala no acotada (logits del modelo) — solo válido
+                       como ranking ordinal, no como porcentaje absoluto.
+                       None cuando reranking está desactivado.
+
+    User-facing (conversión hecha en el router, nunca en los servicios):
+      match_score    : Entero 1–100 derivado de semantic_score (o rerank_score
+                       si reranking está activo).
+      rank           : Posición ordinal en la lista de recomendaciones.
+                       1 = mejor match.
     """
 
     id: Optional[str] = None
-
-    title: Optional[str] = None
-    description: Optional[str] = None
-    source: Optional[str] = None
-    url: Optional[str] = None
-
     barrio: Optional[str] = None
+    barrio_confidence: Optional[str] = None
     operation_type: Optional[str] = None
+    is_dual_intent: Optional[bool] = None
     property_type: Optional[str] = None
 
     price_fixed: Optional[float] = None
@@ -39,60 +49,16 @@ class ListingInfo(BaseModel):
     age: Optional[float] = None
     garages: Optional[float] = None
 
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
-
     dist_plaza: Optional[float] = None
     dist_playa: Optional[float] = None
     n_escuelas_800m: Optional[int] = None
 
-    has_pool: Optional[bool] = None
-    has_gym: Optional[bool] = None
-    has_elevator: Optional[bool] = None
-    has_parrillero: Optional[bool] = None
-    has_terrace: Optional[bool] = None
-    has_rooftop: Optional[bool] = None
-    has_security: Optional[bool] = None
-    has_storage: Optional[bool] = None
-    has_parking: Optional[bool] = None
-    has_party_room: Optional[bool] = None
-    has_green_area: Optional[bool] = None
-    has_playground: Optional[bool] = None
-    has_visitor_parking: Optional[bool] = None
+    source: Optional[str] = None
 
-    # Scores internos
-    semantic_score: Optional[float] = Field(
-        default=None,
-        description="Score crudo de similitud/relevancia semántica devuelto por FAISS/LangChain.",
-    )
-    rerank_score: Optional[float] = Field(
-        default=None,
-        description="Score crudo del reranker, si se usa.",
-    )
+    # ── Internal raw scores (services + MLflow only) ──────────────────────────
+    semantic_score: Optional[float] = None
+    rerank_score: Optional[float] = None
 
-    # Scores user-facing
-    match_score: Optional[int] = Field(
-        default=None,
-        ge=1,
-        le=100,
-        description="Score normalizado 1-100 para mostrar en frontend.",
-    )
-    rank: Optional[int] = Field(
-        default=None,
-        ge=1,
-        description="Posición ordinal en la recomendación.",
-    )
-
-
-class MapPoint(BaseModel):
-    """Punto geográfico simplificado para renderizar mapa en Streamlit."""
-
-    id: str
-    lat: float
-    lon: float
-    label: Optional[str] = None
-    barrio: Optional[str] = None
-    price_fixed: Optional[float] = None
-    currency_fixed: Optional[str] = None
+    # ── User-facing scores (computed by router, exposed to frontend) ───────────
     match_score: Optional[int] = None
     rank: Optional[int] = None

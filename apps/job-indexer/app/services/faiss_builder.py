@@ -21,7 +21,17 @@ class FAISSBuilder:
     """
     Construye y guarda el índice FAISS localmente.
 
-    Output esperado:
+    Responsabilidad de esta clase:
+      - Orquestar la construcción local del vectorstore FAISS.
+      - Guardar index.faiss e index.pkl en disco local.
+      - Escribir manifest.json y listing_ids.json.
+
+    Importante:
+      - NO sube nada a Cloud Storage.
+      - La publicación en GCS vive en GCSIndexPublisher.
+      - La generación de embeddings y cálculo de costos vive en EmbeddingService.
+
+    Output local esperado:
       index.faiss
       index.pkl
       manifest.json
@@ -32,18 +42,50 @@ class FAISSBuilder:
         self.embedding_service = embedding_service
 
     def build_vectorstore(self, documents: list[Document]) -> FAISS:
+        """
+        Construye un vectorstore FAISS desde Documents.
+
+        Este método delega la generación de embeddings al EmbeddingService,
+        para que se activen:
+          - batch processing,
+          - retry/backoff,
+          - checkpoint/resume,
+          - cálculo de estadísticas de costo.
+
+        No usa FAISS.from_documents directamente, porque eso generaría
+        embeddings por dentro de LangChain y no poblaría cost_stats.
+        """
         if not documents:
             raise ValueError("No hay documentos para construir FAISS.")
 
-        logger.info(
-            "building_faiss_vectorstore",
-            extra={"documents_count": len(documents)},
+        checkpoint_dir = self._checkpoint_dir(
+            collection=settings.COLLECTION,
         )
 
-        return FAISS.from_documents(
-            documents=documents,
-            embedding=self.embedding_service.get_embeddings_model(),
+        logger.info(
+            "building_faiss_vectorstore",
+            extra={
+                "documents_count": len(documents),
+                "collection": settings.COLLECTION,
+                "checkpoint_dir": str(checkpoint_dir),
+            },
         )
+
+        vectorstore = self.embedding_service.build_vectorstore(
+            documents=documents,
+            persist_path=checkpoint_dir,
+        )
+
+        logger.info(
+            "faiss_vectorstore_built",
+            extra={
+                "documents_count": len(documents),
+                "collection": settings.COLLECTION,
+                "embedding_statistics": self._get_embedding_stats(),
+            },
+        )
+
+        return vectorstore
 
     def save_vectorstore(
         self,
@@ -51,7 +93,24 @@ class FAISSBuilder:
         collection: str,
         version: str,
     ) -> Path:
-        output_dir = self._local_index_dir(collection, version)
+        """
+        Guarda el índice FAISS en disco local.
+
+        Args:
+            vectorstore:
+                Vectorstore FAISS ya construido.
+            collection:
+                Nombre lógico de la colección, por ejemplo realstate_mvd.
+            version:
+                Versión temporal del índice, por ejemplo 20260501T030000Z.
+
+        Returns:
+            Path del directorio local donde quedó guardado el índice.
+        """
+        output_dir = self._local_index_dir(
+            collection=collection,
+            version=version,
+        )
 
         if output_dir.exists():
             shutil.rmtree(output_dir)
@@ -65,7 +124,8 @@ class FAISSBuilder:
 
         if not index_file.exists() or not pkl_file.exists():
             raise RuntimeError(
-                f"FAISS no generó los archivos esperados en {output_dir}"
+                f"FAISS no generó los archivos esperados en {output_dir}. "
+                "Se esperaban index.faiss e index.pkl."
             )
 
         logger.info(
@@ -74,6 +134,8 @@ class FAISSBuilder:
                 "collection": collection,
                 "version": version,
                 "output_dir": str(output_dir),
+                "index_file": str(index_file),
+                "pkl_file": str(pkl_file),
             },
         )
 
@@ -87,13 +149,32 @@ class FAISSBuilder:
         started_at: str,
         finished_at: str,
     ) -> dict[str, Any]:
+        """
+        Escribe archivos auxiliares del índice:
+
+          - listing_ids.json
+          - manifest.json
+
+        El manifest incluye estadísticas de costo si EmbeddingService las generó.
+        """
+        if not output_dir.exists():
+            raise FileNotFoundError(
+                f"No existe el directorio local del índice: {output_dir}"
+            )
+
         listing_ids = self._extract_listing_ids(documents)
 
         listing_ids_path = output_dir / "listing_ids.json"
         listing_ids_path.write_text(
-            json.dumps(listing_ids, ensure_ascii=False, indent=2),
+            json.dumps(
+                listing_ids,
+                ensure_ascii=False,
+                indent=2,
+            ),
             encoding="utf-8",
         )
+
+        embedding_statistics = self._get_embedding_stats()
 
         manifest = {
             "collection": settings.COLLECTION,
@@ -108,17 +189,52 @@ class FAISSBuilder:
             "listing_ids_count": len(listing_ids),
             "schema_version": "v1",
             "environment": settings.ENV,
+            "embedding_statistics": embedding_statistics,
+            "files": {
+                "index": "index.faiss",
+                "metadata": "index.pkl",
+                "manifest": "manifest.json",
+                "listing_ids": "listing_ids.json",
+            },
         }
 
         manifest_path = output_dir / "manifest.json"
         manifest_path.write_text(
-            json.dumps(manifest, ensure_ascii=False, indent=2),
+            json.dumps(
+                manifest,
+                ensure_ascii=False,
+                indent=2,
+            ),
             encoding="utf-8",
+        )
+
+        logger.info(
+            "faiss_auxiliary_files_written",
+            extra={
+                "collection": settings.COLLECTION,
+                "version": version,
+                "output_dir": str(output_dir),
+                "manifest_path": str(manifest_path),
+                "listing_ids_path": str(listing_ids_path),
+                "documents_count": len(documents),
+                "listing_ids_count": len(listing_ids),
+                "embedding_statistics": embedding_statistics,
+            },
         )
 
         return manifest
 
-    def _local_index_dir(self, collection: str, version: str) -> Path:
+    def _local_index_dir(
+        self,
+        collection: str,
+        version: str,
+    ) -> Path:
+        """
+        Ruta local final del índice FAISS.
+
+        Ejemplo:
+          /tmp/miad-rag-indexer/faiss_index/realstate_mvd/20260501T030000Z
+        """
         return (
             Path(settings.LOCAL_WORKDIR)
             / settings.LOCAL_INDEX_DIRNAME
@@ -126,13 +242,54 @@ class FAISSBuilder:
             / version
         )
 
+    def _checkpoint_dir(
+        self,
+        collection: str,
+    ) -> Path:
+        """
+        Ruta local para checkpoint de embeddings.
+
+        Es separada del output final para que:
+          - no se mezcle _embedding_checkpoint.json con index.faiss/index.pkl;
+          - el output final quede limpio para subir a GCS;
+          - si el job falla, pueda retomarse durante la misma ejecución/localidad.
+        """
+        return (
+            Path(settings.LOCAL_WORKDIR)
+            / "_embedding_checkpoints"
+            / collection
+        )
+
+    def _get_embedding_stats(self) -> dict[str, Any]:
+        """
+        Lee estadísticas de costo desde EmbeddingService.
+
+        Compatible con dos estilos:
+          - get_cost_stats()
+          - propiedad cost_stats
+        """
+        if hasattr(self.embedding_service, "get_cost_stats"):
+            stats = self.embedding_service.get_cost_stats()
+            if isinstance(stats, dict):
+                return stats
+
+        stats = getattr(self.embedding_service, "cost_stats", None)
+        if isinstance(stats, dict):
+            return stats
+
+        return {}
+
     @staticmethod
     def _extract_listing_ids(documents: list[Document]) -> list[str]:
-        result = []
-        seen = set()
+        """
+        Extrae IDs únicos conservando el orden original de recuperación/indexación.
+        """
+        result: list[str] = []
+        seen: set[str] = set()
 
         for doc in documents:
             metadata = doc.metadata or {}
+
             listing_id = (
                 metadata.get("id")
                 or metadata.get("listing_id")

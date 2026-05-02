@@ -1,8 +1,6 @@
 from __future__ import annotations
-
-from typing import Any, Callable, Optional
-
-from pydantic import BaseModel, Field
+from typing import Any, Callable, Optional, Union
+from pydantic import BaseModel
 
 
 class PropertyFilters(BaseModel):
@@ -17,9 +15,9 @@ class PropertyFilters(BaseModel):
     """
 
     # Segmentación
-    operation_type: Optional[str] = Field(default=None, description="'venta' | 'alquiler'")
-    property_type: Optional[str] = Field(default=None, description="'apartamentos' | 'casas'")
-    barrio: Optional[str] = None
+    operation_type: Optional[str] = None
+    property_type: Optional[str] = None
+    barrio: Optional[Union[str, list[str]]] = None
 
     # Precio
     min_price: Optional[float] = None
@@ -51,9 +49,6 @@ class PropertyFilters(BaseModel):
     has_playground: bool = False
     has_visitor_parking: bool = False
 
-    def is_empty(self) -> bool:
-        """True si no hay ningún filtro activo."""
-        return not bool(self.active_dict())
 
     def active_dict(self) -> dict[str, Any]:
         """
@@ -102,6 +97,38 @@ class PropertyFilters(BaseModel):
 
         return result
 
+    def is_empty(self) -> bool:
+        """True si no hay ningún filtro activo."""
+        return not bool(self.active_dict())
+    
+    @staticmethod
+    def _as_float(v: Any) -> Optional[float]:
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _as_int(v: Any) -> Optional[int]:
+        if v is None:
+            return None
+        try:
+            return int(float(v))
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _is_true(v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, (int, float)):
+            return v == 1
+        if isinstance(v, str):
+            return v.strip().lower() in {"1","true","yes","y","si","sí"}
+        return False
+    
     def to_filter_fn(self) -> Optional[Callable[[dict[str, Any]], bool]]:
         """
         Convierte los filtros en un callable compatible con FAISS/LangChain.
@@ -114,110 +141,56 @@ class PropertyFilters(BaseModel):
 
         filters = self
 
-        def _as_float(value: Any) -> Optional[float]:
-            if value is None:
-                return None
-            try:
-                return float(value)
-            except (TypeError, ValueError):
-                return None
-
-        def _as_int(value: Any) -> Optional[int]:
-            if value is None:
-                return None
-            try:
-                return int(float(value))
-            except (TypeError, ValueError):
-                return None
-
-        def _is_true(value: Any) -> bool:
-            if isinstance(value, bool):
-                return value
-            if isinstance(value, int):
-                return value == 1
-            if isinstance(value, str):
-                return value.strip().lower() in {"1", "true", "yes", "si", "sí", "y"}
-            return False
-
+        if self.is_empty():
+            return None
+        filters = self
         def _filter(meta: dict[str, Any]) -> bool:
-            # Segmentación exacta
             if filters.operation_type and meta.get("operation_type") != filters.operation_type:
                 return False
-
             if filters.property_type and meta.get("property_type") != filters.property_type:
                 return False
-
-            if filters.barrio and meta.get("barrio") != filters.barrio:
-                return False
-
-            # Precio
-            price = _as_float(meta.get("price_fixed"))
+            if filters.barrio:
+                barrios = [filters.barrio] if isinstance(filters.barrio, str) else filters.barrio
+                if (meta.get("barrio_fixed") or meta.get("barrio")) not in barrios:
+                    return False
+            price = self._as_float(meta.get("price_fixed"))
             if price is not None:
                 if filters.min_price is not None and price < filters.min_price:
                     return False
                 if filters.max_price is not None and price > filters.max_price:
                     return False
-
-            price_m2 = _as_float(meta.get("price_m2"))
-            if filters.max_price_m2 is not None and price_m2 is not None:
-                if price_m2 > filters.max_price_m2:
-                    return False
-
-            # Dormitorios
-            bedrooms = _as_int(meta.get("bedrooms"))
+            pm2 = self._as_float(meta.get("price_m2"))
+            if filters.max_price_m2 is not None and pm2 is not None and pm2 > filters.max_price_m2:
+                return False
+            bedrooms = self._as_int(meta.get("bedrooms"))
             if bedrooms is not None:
                 if filters.min_bedrooms is not None and bedrooms < filters.min_bedrooms:
                     return False
                 if filters.max_bedrooms is not None and bedrooms > filters.max_bedrooms:
                     return False
-
-            # Superficie: prioriza cubierta; si no existe, total
-            surface = _as_float(meta.get("surface_covered"))
-            if surface is None:
-                surface = _as_float(meta.get("surface_total"))
-
+            surface = self._as_float(meta.get("surface_covered")) or self._as_float(meta.get("surface_total"))
             if surface is not None:
                 if filters.min_surface is not None and surface < filters.min_surface:
                     return False
                 if filters.max_surface is not None and surface > filters.max_surface:
                     return False
-
-            # Distancias
-            dist_plaza = _as_float(meta.get("dist_plaza"))
-            if filters.max_dist_plaza is not None and dist_plaza is not None:
-                if dist_plaza > filters.max_dist_plaza:
+            dist_plaza = self._as_float(meta.get("dist_plaza"))
+            if filters.max_dist_plaza is not None and dist_plaza is not None and dist_plaza > filters.max_dist_plaza:
+                return False
+            dist_playa = self._as_float(meta.get("dist_playa"))
+            if filters.max_dist_playa is not None and dist_playa is not None and dist_playa > filters.max_dist_playa:
+                return False
+            for flag in [
+                "has_pool","has_gym","has_elevator","has_parrillero","has_terrace","has_rooftop",
+                "has_security","has_storage","has_party_room","has_green_area","has_playground","has_visitor_parking",
+            ]:
+                if getattr(filters, flag) and not self._is_true(meta.get(flag)):
                     return False
-
-            dist_playa = _as_float(meta.get("dist_playa"))
-            if filters.max_dist_playa is not None and dist_playa is not None:
-                if dist_playa > filters.max_dist_playa:
-                    return False
-
-            # Amenities
-            amenity_checks = {
-                "has_pool": filters.has_pool,
-                "has_gym": filters.has_gym,
-                "has_elevator": filters.has_elevator,
-                "has_parrillero": filters.has_parrillero,
-                "has_terrace": filters.has_terrace,
-                "has_rooftop": filters.has_rooftop,
-                "has_security": filters.has_security,
-                "has_storage": filters.has_storage,
-                "has_party_room": filters.has_party_room,
-                "has_green_area": filters.has_green_area,
-                "has_playground": filters.has_playground,
-                "has_visitor_parking": filters.has_visitor_parking,
-            }
-
-            for flag_name, required in amenity_checks.items():
-                if required and not _is_true(meta.get(flag_name)):
-                    return False
-
             if filters.has_parking:
-                garages = _as_float(meta.get("garages"))
+                garages = self._as_float(meta.get("garages"))
                 if garages is None or garages <= 0:
                     return False
-
             return True
-
         return _filter
+    
+    

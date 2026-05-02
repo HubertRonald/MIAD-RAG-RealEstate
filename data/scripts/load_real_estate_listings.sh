@@ -11,7 +11,7 @@ LOCAL_CSV_PATH="${1:-../samples/real_estate_listings.csv}"
 GCS_OBJECT_NAME="${2:-real_estate_listings.csv}"
 GCS_URI="gs://${BUCKET_NAME}/real_estate_listings/${GCS_OBJECT_NAME}"
 
-SCHEMA_PATH="${SCHEMA_PATH:-data/schemas/real_estate_listings_schema.json}"
+SCHEMA_PATH="${SCHEMA_PATH:-../schemas/real_estate_listings_schema.json}"
 
 echo "Project: ${PROJECT_ID}"
 echo "Region: ${REGION}"
