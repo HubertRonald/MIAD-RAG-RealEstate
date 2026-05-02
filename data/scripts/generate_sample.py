@@ -17,6 +17,8 @@ EXCLUDE_COLUMNS = [
     "currency_fixed",
     "price_m2_basis",
     "barrio",  # clave para RAG
+    "barrio_confidence", # clave para RAG
+    "is_dual_intent",
 ]
 
 def encode_base64(value):
