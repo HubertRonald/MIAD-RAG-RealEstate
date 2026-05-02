@@ -1,18 +1,15 @@
 from __future__ import annotations
 
+import logging
 import unicodedata
 from typing import Optional
 
-try:
-    from rapidfuzz import fuzz, process
+from rapidfuzz import fuzz, process
 
-    _HAS_RAPIDFUZZ = True
-except ImportError:
-    import difflib
-
-    _HAS_RAPIDFUZZ = False
+logger = logging.getLogger(__name__)
 
 
+# Known barrios — mantener la lista canónica original
 KNOWN_BARRIOS = {
     "AGUADA",
     "AIRES PUROS",
@@ -78,9 +75,15 @@ KNOWN_BARRIOS = {
 }
 
 
+# Aliases explícitos, pero sin reemplazar la lista canónica.
+# Estos ayudan cuando el usuario escribe nombres abreviados o con tildes.
 BARRIO_ALIASES = {
     "PARQUE RODÓ": "PARQUE RODO",
+    "PARQUE RODO": "PARQUE RODO",
     "CORDÓN": "CORDON",
+    "CORDON": "CORDON",
+    "MALVÍN": "MALVIN",
+    "MALVIN": "MALVIN",
     "PEÑAROL": "PEÑAROL LAVALLEJA",
     "PQUE BATLLE": "PQUE BATLLE VILLA DOLORES",
     "PARQUE BATLLE": "PQUE BATLLE VILLA DOLORES",
@@ -91,65 +94,111 @@ BARRIO_ALIASES = {
     "NUEVA SAVONA": "PRADO NUEVA SAVONA",
     "VILLA MUÑOZ": "VILLA MUÑOZ RETIRO",
     "RETIRO": "VILLA MUÑOZ RETIRO",
-    "COLON": "COLON CENTRO Y NOROESTE",
     "COLÓN": "COLON CENTRO Y NOROESTE",
+    "COLON": "COLON CENTRO Y NOROESTE",
 }
 
 
 def strip_accents(value: str) -> str:
+    """
+    Quita tildes para comparación robusta.
+    """
     normalized = unicodedata.normalize("NFKD", value)
     return "".join(ch for ch in normalized if not unicodedata.combining(ch))
 
 
 def normalize_key(value: str) -> str:
-    return " ".join(strip_accents(value).upper().strip().split())
+    """
+    Normaliza texto para comparación:
+    - convierte a str
+    - mayúsculas
+    - quita tildes
+    - colapsa espacios
+    """
+    return " ".join(strip_accents(str(value)).upper().strip().split())
 
 
 def normalize_barrio(raw: Optional[str], cutoff: int = 80) -> Optional[str]:
     """
-    Normaliza un barrio de Montevideo hacia su forma canónica.
+    Normaliza un nombre de barrio a su forma canónica en mayúsculas.
 
-    Ejemplos:
-      "pocitos" -> "POCITOS"
-      "Cordón" -> "CORDON"
-      "Parque Rodó" -> "PARQUE RODO"
+    Mantiene la intención de la función original:
+
+      - "pocitos" -> "POCITOS"
+      - "Posiitos" -> "POCITOS" si supera cutoff
+      - sin match suficiente -> None
+
+    Mejoras frente a la original:
+
+      - soporta tildes/no tildes: "Cordón" -> "CORDON"
+      - aliases explícitos: "Prado" -> "PRADO NUEVA SAVONA"
+      - matching determinístico usando lista ordenada
+      - usa logging en vez de print
     """
     if not raw:
         return None
 
-    candidate_original = " ".join(raw.upper().strip().split())
-    candidate = normalize_key(candidate_original)
+    raw_text = str(raw)
+    candidate_original = " ".join(raw_text.upper().strip().split())
+    candidate_key = normalize_key(candidate_original)
 
+    # 1. Exact match original
+    if candidate_original in KNOWN_BARRIOS:
+        return candidate_original
+
+    # 2. Alias con forma original
     if candidate_original in BARRIO_ALIASES:
-        return BARRIO_ALIASES[candidate_original]
+        match = BARRIO_ALIASES[candidate_original]
+        logger.debug("[normalize_barrio] alias '%s' -> '%s'", raw, match)
+        return match
 
-    if candidate in BARRIO_ALIASES:
-        return BARRIO_ALIASES[candidate]
+    # 3. Alias normalizado sin tildes
+    normalized_aliases = {
+        normalize_key(alias): canonical
+        for alias, canonical in BARRIO_ALIASES.items()
+    }
 
-    normalized_known = {normalize_key(barrio): barrio for barrio in KNOWN_BARRIOS}
+    if candidate_key in normalized_aliases:
+        match = normalized_aliases[candidate_key]
+        logger.debug("[normalize_barrio] normalized alias '%s' -> '%s'", raw, match)
+        return match
 
-    if candidate in normalized_known:
-        return normalized_known[candidate]
+    # 4. Exact match normalizado contra barrios conocidos
+    normalized_known = {
+        normalize_key(barrio): barrio
+        for barrio in KNOWN_BARRIOS
+    }
 
-    if _HAS_RAPIDFUZZ:
-        result = process.extractOne(
-            candidate,
-            list(normalized_known.keys()),
-            scorer=fuzz.WRatio,
-            score_cutoff=cutoff,
+    if candidate_key in normalized_known:
+        return normalized_known[candidate_key]
+
+    # 5. Fuzzy match determinístico
+    choices = sorted(normalized_known.keys())
+
+    result = process.extractOne(
+        candidate_key,
+        choices,
+        scorer=fuzz.WRatio,
+        score_cutoff=cutoff,
+    )
+
+    if result:
+        match_key, score, _ = result
+        match = normalized_known[match_key]
+
+        logger.debug(
+            "[normalize_barrio] fuzzy '%s' -> '%s' score=%s",
+            raw,
+            match,
+            score,
         )
-        if result:
-            match_key, _, _ = result
-            return normalized_known[match_key]
 
-    else:
-        matches = difflib.get_close_matches(
-            candidate,
-            list(normalized_known.keys()),
-            n=1,
-            cutoff=cutoff / 100,
-        )
-        if matches:
-            return normalized_known[matches[0]]
+        return match
+
+    logger.debug(
+        "[normalize_barrio] '%s' no match found cutoff=%s",
+        raw,
+        cutoff,
+    )
 
     return None

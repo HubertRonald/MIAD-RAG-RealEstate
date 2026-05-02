@@ -3,7 +3,6 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Optional
 
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,8 +10,13 @@ class IndexerSettings(BaseSettings):
     """
     Configuración runtime del Cloud Run Job encargado de construir FAISS.
 
-    En local puede leer .env.
-    En Cloud Run Job se inyecta por variables de entorno.
+    Responsabilidades:
+      - Leer listings desde BigQuery.
+      - Convertir filas en Documents.
+      - Generar embeddings masivos.
+      - Construir índice FAISS.
+      - Publicar index.faiss, index.pkl, manifest.json y listing_ids.json en GCS.
+      - Opcionalmente registrar métricas en MLflow.
     """
 
     model_config = SettingsConfigDict(
@@ -38,7 +42,7 @@ class IndexerSettings(BaseSettings):
     BQ_PROJECT_ID: str = "miad-paad-rs-dev"
     BQ_DATASET_ID: str = "ds_miad_rag_rs"
     BQ_LISTINGS_TABLE: str = "real_estate_listings"
-    BQ_LOCATION: Optional[str] = None
+    BQ_LOCATION: Optional[str] = "us-east4"
 
     # Optional query controls
     BQ_LIMIT: Optional[int] = None
@@ -56,7 +60,20 @@ class IndexerSettings(BaseSettings):
     # Gemini embeddings
     GEMINI_EMBEDDING_MODEL: str = "models/gemini-embedding-001"
 
+    # Bulk embedding controls.
+    # These are only needed by job-indexer, not by backend.
+    EMBEDDING_BATCH_SIZE: int = 50
+    EMBEDDING_MAX_BATCH_SIZE: int = 100
+    EMBEDDING_REQUEST_DELAY_SECONDS: int = 15
+
+    # Cost estimation for bulk embeddings.
+    # Operational estimate only. Verify current pricing in official Gemini docs.
+    EMBEDDING_PRICE_PER_M_TOKENS: float = 0.025
+    CHARS_PER_TOKEN: float = 3.2
+
     # MLflow
+    # For now, keep disabled in Cloud Run Job.
+    # Formal RAGAS/MLflow experiments can continue running locally.
     ENABLE_MLFLOW: bool = False
     MLFLOW_TRACKING_URI: Optional[str] = None
     MLFLOW_EXPERIMENT_NAME: str = "miad-rag-realestate-indexer"

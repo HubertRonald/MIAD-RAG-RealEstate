@@ -40,7 +40,7 @@
     { "name": "codba", "type": "STRING", "mode": "NULLABLE", "description": "Código de base asociado al barrio." },
     { "name": "barrio_confidence", "type": "STRING", "mode": "NULLABLE", "description": "Nivel de confianza de la asignación geográfica del barrio." },
     { "name": "operation_check", "type": "STRING", "mode": "NULLABLE", "description": "Validación de consistencia del tipo de operación." },
-    { "name": "is_dual_intent", "type": "STRING", "mode": "NULLABLE", "description": "Indica si el aviso sugiere tanto venta como alquiler." },
+    { "name": "is_dual_intent", "type": "BOOL", "mode": "NULLABLE", "description": "Indica si el aviso sugiere tanto venta como alquiler." },
     { "name": "title_clean", "type": "STRING", "mode": "NULLABLE", "description": "Título limpio y pre-procesado para el motor de RAG." },
     { "name": "description_clean", "type": "STRING", "mode": "NULLABLE", "description": "Descripción limpia y normalizada para la generación de embeddings en el RAG." },
     { "name": "barrio", "type": "STRING", "mode": "NULLABLE", "description": "Nombre del barrio oficial de Montevideo validado por join espacial." },

@@ -1,7 +1,5 @@
 from __future__ import annotations
-
 from typing import Optional
-
 from pydantic import BaseModel, Field
 
 
@@ -9,7 +7,7 @@ class AskRequest(BaseModel):
     """Request para consultas generales de mercado inmobiliario."""
 
     question: str = Field(..., min_length=1)
-    collection: str = Field(..., min_length=1)
+    collection: str = Field(default="realstate_mvd", min_length=1)
     use_reranking: bool = False
     use_query_rewriting: bool = False
 

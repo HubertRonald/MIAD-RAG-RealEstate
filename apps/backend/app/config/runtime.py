@@ -3,7 +3,6 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Optional
 
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,8 +10,12 @@ class RuntimeSettings(BaseSettings):
     """
     Configuración runtime del backend FastAPI.
 
-    En local se puede cargar desde .env.
-    En Cloud Run se inyecta por variables de entorno / Secret Manager.
+    Responsabilidades:
+      - Servir API FastAPI en Cloud Run.
+      - Cargar índice FAISS desde GCS hacia /tmp.
+      - Atender /ask y /recommend.
+      - Consultar BigQuery para enriquecer listings.
+      - Usar Gemini para generación de respuesta.
     """
 
     model_config = SettingsConfigDict(
@@ -49,7 +52,7 @@ class RuntimeSettings(BaseSettings):
     BQ_DATASET_ID: str = "ds_miad_rag_rs"
     BQ_LISTINGS_TABLE: str = "real_estate_listings"
     BQ_LISTING_ID_COLUMN: str = "id"
-    BQ_LOCATION: Optional[str] = None
+    BQ_LOCATION: Optional[str] = "us-east4"
 
     # Retrieval
     RETRIEVAL_K: int = 10
@@ -59,6 +62,12 @@ class RuntimeSettings(BaseSettings):
     GEMINI_EMBEDDING_MODEL: str = "models/gemini-embedding-001"
     GEMINI_GENERATION_MODEL: str = "gemini-2.5-flash"
     GEMINI_TEMPERATURE: float = 0.2
+    GEMINI_MAX_OUTPUT_TOKENS: int = 5000
+
+    # Cost estimation for online query embeddings.
+    # Operational estimate only. Verify current pricing in official Gemini docs.
+    EMBEDDING_PRICE_PER_M_TOKENS: float = 0.025
+    CHARS_PER_TOKEN: float = 3.2
 
     # Reranking
     ENABLE_RERANKING_MODEL: bool = False
