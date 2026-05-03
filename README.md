@@ -108,7 +108,8 @@ Sistema de recomendación inmobiliaria basado en **Retrieval-Augmented Generatio
 - Cloud Storage (FAISS backup)
 - Secret Manager (seguridad)
 - Gemini API (LLM + embeddings)
-  
+
+> [*]: Se deja indicado para una posterior implementación. Fuera del alcance para el curso MIAD-PAAD-202612.
 
 ## Flujo de Solución (RAG Pipeline)
 
