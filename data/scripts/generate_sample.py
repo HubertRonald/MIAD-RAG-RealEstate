@@ -4,7 +4,7 @@ import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-INPUT_FILE = os.path.join(BASE_DIR, "valid_barrios__epsg4326_290426.csv")
+INPUT_FILE = os.path.join(BASE_DIR, "../outputs/valid_barrios_proj_290426.csv")
 OUTPUT_FILE = os.path.join(BASE_DIR, "../samples/real_estate_listings.csv")
 
 # columnas que NO se deben anonimizar (aunque sean string)
@@ -39,7 +39,7 @@ def main():
     print(f"Total registros: {len(df)}")
 
     print("Tomando muestra reproducible...")
-    df_sample = df.sample(n=10, random_state=42)
+    df_sample = df.sample(n=30, random_state=42)
 
     print("Detectando columnas tipo string...")
     string_columns = df_sample.select_dtypes(include=["object"]).columns.tolist()

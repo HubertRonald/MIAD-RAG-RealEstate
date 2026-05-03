@@ -21,12 +21,12 @@ logging.basicConfig(
 load_dotenv()
 
 # Verificar que GOOGLE_API_KEY esté configurada
-if not os.getenv("GOOGLE_API_KEY"):
+'''if not os.getenv("GOOGLE_API_KEY"):
     print("WARNING: GOOGLE_API_KEY no encontrada en variables de entorno")
     print("Por favor, configura tu API key en el archivo .env")
 else:
     print("GOOGLE_API_KEY cargada correctamente")
-
+'''
 # ==================== IMPORTS DE FASTAPI ====================
 
 from fastapi import FastAPI
@@ -64,7 +64,7 @@ app.add_middleware(
 # ==================== INTEGRACIÓN DE ROUTERS ====================
 
 # Incluir todos los routers del sistema
-app.include_router(load_from_url_router)
+app.include_router(load_from_url_router, include_in_schema=False)
 app.include_router(load_from_csv_router)
 app.include_router(ask_router)
 app.include_router(health_router)
@@ -83,7 +83,7 @@ def read_root():
     Returns:
         dict: Mensaje de bienvenida con información básica
     """
-    return {"message": "Bienvenido a la API de carga de documentos"}
+    return {"message": "Bienvenido al backend de Sistema de Recomendación Inteligente para el mercado inmobiliario de Montevideo"}
 
 
 # ==================== EVENTOS DE APLICACIÓN ====================
