@@ -61,8 +61,6 @@ together {
 
         rectangle "generation_service.py\n- generate_response()          ← /ask\n- generate_recommendations()  ← /recommend" as generation
 
-        rectangle "query_rewriting_service.py\n(PENDIENTE)" as query_rw  #FFE0E0
-
         rectangle "reranking_service.py\n(PENDIENTE)" as reranking  #FFE0E0
 
         rectangle "preference_extraction_service.py\n- extract filters from free text\n- enrich PropertyFilters\n- Modos 2 & 3" as pref_ext
@@ -132,7 +130,6 @@ pref_ext    --> retrieval     : enriched PropertyFilters
 ' ============================================================
 rag_graph   --> retrieval     : retrieve_documents()
 rag_graph   --> generation    : generate_response()
-rag_graph   --> query_rw      : rewrite query
 rag_graph   --> reranking     : rerank results
 retrieval   --> faiss         : similarity search\n+ metadata filter
 

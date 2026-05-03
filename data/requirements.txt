@@ -1,0 +1,12 @@
+# requirements.txt para ETL 
+folium==0.17.0
+geopandas==0.14.4
+matplotlib==3.7.3
+missingno==0.4.2
+numpy==1.24.3
+pandas==2.0.3
+seaborn==0.12.2
+session_info==1.0.0
+shapely==2.0.6
+scikit-learn==1.4.2
+openpyxl

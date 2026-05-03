@@ -81,6 +81,9 @@
 ### RAG-based Real Estate Recommendation System on GCP  
 **Semantic Search · Explainable AI · Geospatial Analytics**
 
+## Integrantes
+
+A. Barbosa, M. Marin, P. Luissi, R. Mendoza
 
 ## Resumen
 

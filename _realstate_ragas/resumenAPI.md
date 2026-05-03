@@ -1,257 +1,88 @@
-# Documentación del API PENDIENTE ACTUALIZAR!!!
+# Documentación del API — Sistema RAG Inmobiliario Montevideo
 
-El API REST está compuesto por **4 endpoints principales** que permiten gestionar documentos y realizar consultas inteligentes mediante RAG (Retrieval-Augmented Generation).
+El API REST expone **3 endpoints principales** para construir el índice y realizar consultas inteligentes sobre el mercado inmobiliario de Montevideo.
 
----
-
-## 1. Health Check
-
-**Endpoint**: `GET /api/v1/health`
-
-**Descripción**: Verificación del estado del sistema.
-
-**Request**: Sin parámetros
-
-**Response**:
-
-```json
-{
-  "status": "healthy",
-  "success": true,
-  "timestamp": "2026-01-15T10:15:30.123456",
-  "service": "API"
-}
-```
-
-**Códigos de estado**:
-
-- `200 OK`: Sistema funcionando correctamente
+> **Nota**: Los endpoints de administración (`validate-load`, `health`) están disponibles pero no se documentan en Swagger para mantener la interfaz limpia.
 
 ---
 
-## 2. Load Documents
+## 1. Load from CSV
 
 **Endpoint**: `POST /api/v1/documents/load-from-csv`
 
-**Descripción**: Carga documentos desde XXXX y los procesa asíncronamente. El procesamiento incluye descarga, chunking (fragmentación) y generación de embeddings para crear un índice vectorial FAISS. 
+**Descripción**: Indexa el archivo `listings.csv` desde `docs/realstate_mvd/` y construye el índice vectorial FAISS. El procesamiento es **asíncrono** — el endpoint retorna inmediatamente con un `processing_id` para consultar el estado.
+
+**Flujo**: CSV → `csv_document_service` (preprocesamiento + amenities + geo) → `chunking_service` → `embedding_service` (Gemini + checkpoint/resume) → FAISS Index
+
+> Este proceso puede tomar entre 10 y 15 minutos para el corpus completo (~3.400 listings). Si se interrumpe, volver a ejecutar el endpoint — retomará desde el último checkpoint guardado automáticamente.
 
 ### Request Body
 
-**Mínimo requerido**:
-
 ```json
 {
-  "source_url": "https://drive.google.com/drive/folders/FOLDER_ID",
-  "collection_name": "mi_coleccion",
-  "chunking_strategy": "recursive_character"
+  "collection_name": "realstate_mvd"
 }
 ```
 
-**Con procesamiento multimodal**:
+**Con filtros opcionales** (para indexar un segmento específico):
 
 ```json
 {
-  "source_url": "https://drive.google.com/drive/folders/FOLDER_ID",
-  "collection_name": "mi_coleccion",
-  "chunking_strategy": "recursive_character",
-  "multimodal": true,
-  "processing_options": {
-    "file_extensions": ["pdf", "md"],
-    "max_file_size_mb": 100,
-    "timeout_per_file_seconds": 300
-  }
+  "collection_name": "realstate_mvd",
+  "operation_type": "venta",
+  "property_type": "apartamentos",
+  "barrio": "POCITOS"
 }
 ```
 
 ### Parámetros
 
-| Parámetro             | Tipo         | Requerido | Default   | Descripción                                                                 |
-| ---------------------- | ------------ | --------- | --------- | ---------------------------------------------------------------------------- |
-| `source_url`         | string (URL) | ✅ Sí    | -         | URL de Google Drive (carpeta o archivo individual)                           |
-| `collection_name`    | string       | ✅ Sí    | -         | Nombre único para identificar esta colección de documentos                 |
-| `chunking_strategy`  | string       | ✅ Sí    | -         | Estrategia de fragmentación (ver opciones abajo)                            |
-| `multimodal`         | boolean      | ❌ No     | `false` | Activa procesamiento multimodal de PDFs (texto + imágenes VLM + tablas)    |
-| `processing_options` | object       | ❌ No     | ver abajo | Configuración adicional de procesamiento                                    |
-
-#### Estrategias de Chunking
-
-| Estrategia                    | Valor                     | Descripción                                                      |
-| ----------------------------- | ------------------------- | ----------------------------------------------------------------- |
-| **Recursive Character** | `"recursive_character"` | División recursiva por caracteres (recomendado para uso general) |
-| **Fixed Size**          | `"fixed_size"`          | Chunks de tamaño fijo con overlap configurable                   |
-| **Semantic**            | `"semantic"`            | División basada en significado semántico                        |
-| **Document Structure**  | `"document_structure"`  | División basada en estructura del documento (headers, párrafos) |
-
-#### Processing Options (defaults)
-
-| Campo                        | Tipo          | Default       | Descripción                               |
-| ---------------------------- | ------------- | ------------- | ------------------------------------------ |
-| `file_extensions`          | array[string] | `["pdf", "md"]` | Extensiones de archivo permitidas        |
-| `max_file_size_mb`         | integer       | `100`       | Tamaño máximo por archivo en MB (1-1000) |
-| `timeout_per_file_seconds` | integer       | `300`       | Timeout por archivo en segundos (30-3600) |
-
+| Parámetro          | Tipo   | Requerido | Default        | Descripción                               |
+| ------------------- | ------ | --------- | -------------- | ------------------------------------------ |
+| `collection_name` | string |  ✅ Sí     | `realstate_mvd` | Nombre de la colección / carpeta en `./docs/` |
+| `operation_type`  | string | ❌ No     | —             | `"venta"` \| `"alquiler"`               |
+| `property_type`   | string | ❌ No     | —             | `"apartamentos"` \| `"casas"`           |
+| `barrio`          | string | ❌ No     | —             | Nombre exacto del barrio (ej: `"POCITOS"`) |
 
 ### Response
 
 ```json
 {
   "success": true,
-  "message": "Procesamiento iniciado en background",
-  "processing_id": "proc_b8ae8dbda5f9",
-  "timestamp": "2026-01-15T10:15:30.123456"
+  "message": "Indexación iniciada en background",
+  "processing_id": "csv_7a880482d6fa",
+  "timestamp": "2026-05-01T18:25:49.834501",
+  "collection": "realstate_mvd",
+  "filters": null
 }
 ```
 
-| Campo             | Tipo              | Descripción                                         |
-| ----------------- | ----------------- | ---------------------------------------------------- |
-| `success`       | boolean           | Indica si el procesamiento se inició correctamente  |
-| `message`       | string            | Mensaje descriptivo                                  |
-| `processing_id` | string            | ID único para consultar el estado del procesamiento |
-| `timestamp`     | string (ISO 8601) | Momento en que se inició el procesamiento           |
+| Campo             | Tipo    | Descripción                                          |
+| ----------------- | ------- | ----------------------------------------------------- |
+| `success`       | boolean | `true` si el proceso se encoló correctamente        |
+| `message`       | string  | Mensaje descriptivo                                   |
+| `processing_id` | string  | ID para consultar el estado del procesamiento         |
+| `timestamp`     | string  | ISO 8601 — momento de inicio                         |
+| `collection`    | string  | Nombre de la colección indexada                      |
+| `filters`       | object  | Filtros aplicados, o `null` si se indexó todo       |
 
 ### Códigos de estado
 
-- `200 OK`: Procesamiento iniciado correctamente
-- `400 Bad Request`: Parámetros inválidos
-- `404 Not Found`: URL no accesible
-
-### Notas importantes
-
-- El procesamiento es **asíncrono**: el endpoint retorna inmediatamente con un `processing_id`
-- Use el endpoint `GET /documents/load-from-url/{processing_id}` para consultar el estado
-- Los parámetros de chunking (chunk_size, overlap, etc.) se configuran en `app/services/chunking_service.py`
-- El modelo de embeddings se configura en `app/services/embedding_service.py`
-- Los archivos Markdown nunca usan procesamiento multimodal independientemente del flag
+- `200 OK` — Procesamiento encolado correctamente
+- `404 Not Found` — La carpeta `./docs/{collection_name}/` no existe
+- `422 Unprocessable Entity` — Valores inválidos en `operation_type` o `property_type`
 
 ---
 
-## 3. Validate Load
-
-**Endpoint**: `GET /api/v1/documents/load-from-url/{processing_id}`
-
-**Descripción**: Consulta el estado y resultados de un procesamiento de documentos iniciado con el endpoint anterior.
-
-### Parámetros
-
-| Parámetro        | Ubicación | Tipo   | Descripción                     |
-| ----------------- | ---------- | ------ | -------------------------------- |
-| `processing_id` | path       | string | ID del procesamiento a consultar |
-
-### Response
-
-```json
-{
-  "success": true,
-  "message": "Documentos descargados y procesados exitosamente con RAG",
-  "data": {
-    "processing_summary": {
-      "rag_processing": true,
-      "vector_store_created": true,
-      "total_processing_time_sec": 45.23
-    },
-    "collection_info": {
-      "name": "mi_coleccion",
-      "documents_found": 5,
-      "documents_processed_successfully": 5,
-      "documents_failed": 0,
-      "documents_count_before": 0,
-      "documents_count_after": 5,
-      "total_chunks_before": 0,
-      "total_chunks_after": 150,
-      "storage_size_mb": 12.5
-    },
-    "documents_processed": [
-      {
-        "filename": "documento1.pdf",
-        "file_path": "./docs/mi_coleccion/documento1.pdf",
-        "file_size_bytes": 524288,
-        "download_url": "https://drive.google.com/...",
-        "processing_time_seconds": 8.5
-      }
-    ],
-    "failed_documents": [],
-    "chunking_statistics": {
-      "total_chunks": 150,
-      "avg_chunk_size": 512,
-      "min_chunk_size": 200,
-      "max_chunk_size": 800,
-      "strategy_used": "recursive_character"
-    },
-    "embedding_statistics": {
-      "model_used": "models/gemini-embedding-001",
-      "total_embeddings_generated": 150,
-      "vector_store_created": true,
-      "vector_store_path": "./faiss_index/mi_coleccion",
-      "vector_store_type": "FAISS",
-      "multimodal_processing": true,
-      "multimodal_chunks": 12,
-      "chunks_with_images": 8,
-      "chunks_with_tables": 4,
-      "total_vlm_calls": 23
-    },
-    "rag_status": {
-      "vector_store_exists": true,
-      "vector_store_ready": true,
-      "rag_ready": true,
-      "document_count": 150,
-      "documents_in_collection": 5,
-      "pdf_files": ["documento1.pdf", "documento2.pdf"]
-    },
-    "warnings": [],
-    "processing_id": "proc_b8ae8dbda5f9",
-    "timestamp": "2026-01-15T10:20:45.789123"
-  }
-}
-```
-
-### Estructura de la respuesta
-
-#### `processing_summary`
-
-- `rag_processing`: Indica si el procesamiento RAG se completó
-- `vector_store_created`: Indica si se creó el índice vectorial
-- `total_processing_time_sec`: Tiempo total de procesamiento
-
-#### `collection_info`
-
-- `name`: Nombre de la colección
-- `documents_found`: Total de documentos encontrados en la URL
-- `documents_processed_successfully`: Documentos procesados sin errores
-- `documents_failed`: Documentos que fallaron
-- `total_chunks_after`: Total de chunks generados
-- `storage_size_mb`: Espacio ocupado en disco
-
-#### `embedding_statistics` (campos multimodales, solo si `multimodal=true`)
-
-| Campo                    | Tipo    | Descripción                                         |
-| ------------------------ | ------- | ---------------------------------------------------- |
-| `multimodal_processing` | boolean | Indica si se usó procesamiento multimodal           |
-| `multimodal_chunks`     | integer | Chunks provenientes de páginas con contenido visual |
-| `chunks_with_images`    | integer | Chunks que contienen descripciones `[FIGURA]`      |
-| `chunks_with_tables`    | integer | Chunks que contienen tablas en Markdown             |
-| `total_vlm_calls`       | integer | Total de llamadas al VLM de Gemini                  |
-
-#### `rag_status`
-
-- `vector_store_ready`: Indica si el índice vectorial está listo para consultas
-- `rag_ready`: Indica si el sistema RAG está completamente operativo
-- `document_count`: Número de embeddings en el índice FAISS
-
-### Códigos de estado
-
-- `200 OK`: Información recuperada correctamente
-- `400 Bad Request`: processing_id vacío
-- `404 Not Found`: processing_id no existe
-- `422 Unprocessable Entity`: Archivo JSON corrupto
-- `500 Internal Server Error`: Error interno del servidor
-
----
-
-## 4. Ask Questions
+## 2. Ask
 
 **Endpoint**: `POST /api/v1/ask`
 
-**Descripción**: Realiza consultas inteligentes al sistema RAG sobre documentos cargados. El sistema recupera fragmentos relevantes, aplica reranking adaptativo según el tipo de contenido, y genera una respuesta en el idioma de la pregunta (español o inglés).
+**Descripción**: Consulta de mercado en lenguaje natural. Recupera listings relevantes mediante búsqueda semántica en FAISS y genera una respuesta fundamentada **exclusivamente** en el contexto recuperado.
+
+Soporta preguntas sobre precios, tendencias de mercado, características de barrios y comparaciones de zonas. Responde en el idioma de la pregunta (español / inglés, con tono rioplatense en español).
+
+**Flujo**: pregunta → guardrail de scope → `RAGGraphService` (LangGraph) → retrieval → generación (Gemini)
 
 ### Request Body
 
@@ -259,119 +90,248 @@ El API REST está compuesto por **4 endpoints principales** que permiten gestion
 
 ```json
 {
-  "question": "¿Cuáles son los puntos principales del documento?",
-  "collection": "mi_coleccion"
+  "question": "¿Cuánto cuesta el m² en Pocitos?",
+  "collection": "realstate_mvd"
 }
 ```
 
-**Completo (con opciones avanzadas)**:
+**Con opciones avanzadas**:
 
 ```json
 {
-  "question": "¿Cuáles son los puntos principales del documento?",
-  "collection": "mi_coleccion",
-  "use_reranking": true,
+  "question": "¿Cuánto cuesta el m² en Pocitos?",
+  "collection": "realstate_mvd",
+  "use_reranking": false,
   "use_query_rewriting": true
 }
 ```
 
 ### Parámetros
 
-| Parámetro              | Tipo    | Requerido | Default   | Descripción                                                                              |
-| ----------------------- | ------- | --------- | --------- | ----------------------------------------------------------------------------------------- |
-| `question`            | string  | ✅ Sí    | -         | La pregunta a responder (español o inglés)                                              |
-| `collection`          | string  | ✅ Sí    | -         | Nombre de la colección a consultar                                                       |
-| `use_reranking`       | boolean | ❌ No     | `false` | Aplica reranking con Cross-Encoder. En colecciones multimodales, el reranking se aplica solo a chunks con contenido visual (`[FIGURA]` o tablas); los chunks de texto puro lo bypasean automáticamente. |
-| `use_query_rewriting` | boolean | ❌ No     | `false` | Reescribe la consulta con estrategia `few_shot` para mejorar el retrieval              |
+| Parámetro              | Tipo    | Requerido | Default   | Descripción                                                      |
+| ----------------------- | ------- | --------- | --------- | ----------------------------------------------------------------- |
+| `question`            | string  | ✅ Sí    | —        | Pregunta en lenguaje natural (español o inglés)                 |
+| `collection`          | string  | ✅ Sí    | —        | Colección a consultar (usar `"realstate_mvd"`)                  |
+| `use_reranking`       | boolean | ❌ No     | `false` | Activa reranking con Cross-Encoder (PENDIENTE de evaluación)    |
+| `use_query_rewriting` | boolean | ❌ No     | `false` | Reescribe la consulta en modo few-shot para mejorar el retrieval |
 
 ### Response
 
 ```json
 {
-  "question": "¿Cuáles son los puntos principales del documento?",
-  "final_query": "¿Cuáles son los puntos principales del documento?",
-  "answer": "Los puntos principales del documento incluyen: 1) Definición de objetivos...",
-  "collection": "mi_coleccion",
-  "files_consulted": ["documento1.pdf", "documento2.pdf"],
-  "context_docs": [
-    {
-      "file_name": "documento1.pdf",
-      "chunk_type": "text",
-      "snippet": "Los objetivos principales son...",
-      "content": "Los objetivos principales son definir las metas estratégicas...",
-      "priority": "high",
-      "rerank_score": null
-    },
-    {
-      "file_name": "documento1.pdf",
-      "chunk_type": "figure",
-      "snippet": "[FIGURA] Diagrama de arquitectura del sistema...",
-      "content": "[FIGURA] Diagrama de arquitectura del sistema mostrando los tres componentes principales...",
-      "priority": "high",
-      "rerank_score": 8.4231
-    }
-  ],
-  "reranker_used": true,
-  "query_rewriting_used": true,
-  "response_time_sec": 2.45
+  "question": "¿Cuánto cuesta el m² en Pocitos?",
+  "final_query": "¿Cuánto cuesta el m² en Pocitos?",
+  "answer": "En Pocitos, el precio del m² varía entre USD 2.500 y USD 4.000 dependiendo...",
+  "collection": "realstate_mvd",
+  "files_consulted": ["listing_MLU123456", "listing_MLU789012"],
+  "context_docs": [...],
+  "reranker_used": false,
+  "query_rewriting_used": false,
+  "response_time_sec": 18.3
 }
 ```
 
-### Estructura de la respuesta
-
-| Campo                    | Tipo          | Descripción                                                                        |
-| ------------------------ | ------------- | ----------------------------------------------------------------------------------- |
-| `question`             | string        | Pregunta original del usuario                                                       |
-| `final_query`          | string        | Consulta final usada para el retrieval (reescrita si `use_query_rewriting=true`)  |
-| `answer`               | string        | Respuesta generada en el idioma de la pregunta                                      |
-| `collection`           | string        | Colección consultada                                                               |
-| `files_consulted`      | array[string] | Lista de archivos fuente consultados                                                |
-| `context_docs`         | array[object] | Fragmentos utilizados como contexto (ver estructura abajo)                          |
-| `reranker_used`        | boolean       | Indica si se aplicó reranking en algún chunk                                       |
-| `query_rewriting_used` | boolean       | Indica si se aplicó reescritura de consulta                                         |
-| `response_time_sec`    | number        | Tiempo total de procesamiento en segundos                                           |
-
-#### Estructura de `context_docs`
-
-| Campo            | Tipo              | Valores posibles                              | Descripción                                                         |
-| ---------------- | ----------------- | --------------------------------------------- | -------------------------------------------------------------------- |
-| `file_name`    | string            | -                                             | Nombre del archivo fuente                                            |
-| `chunk_type`   | string            | `"text"`, `"figure"`, `"table"`, `"code"` | Tipo de contenido del chunk                                          |
-| `snippet`      | string            | -                                             | Primeros 200 caracteres del fragmento                                |
-| `content`      | string            | -                                             | Contenido completo del fragmento                                     |
-| `priority`     | string            | `"high"`, `"medium"`                        | Prioridad del fragmento en el contexto                               |
-| `rerank_score` | number \| null    | -                                             | Score del Cross-Encoder (`null` si el chunk fue omitido por el reranking) |
-
-#### Tipos de chunk (`chunk_type`)
-
-| Valor       | Descripción                                                            |
-| ----------- | ----------------------------------------------------------------------- |
-| `"text"`  | Texto extraído directamente del PDF                                    |
-| `"figure"` | Descripción generada por VLM, marcada con `[FIGURA]`                 |
-| `"table"` | Tabla extraída con pdfplumber, serializada en Markdown                 |
-| `"code"`  | Bloque de código detectado por presencia de keywords (`def`, `class`) |
-
-### Comportamiento del reranking adaptativo
-
-Cuando `use_reranking=true`, el sistema aplica una estrategia de **reranking selectivo**:
-
-- Chunks con `chunk_type` de `"figure"` o `"table"` (o que contengan `[FIGURA]`) → reranking con `ms-marco-MiniLM-L-6-v2`
-- Chunks con `chunk_type` de `"text"` o `"code"` → bypass del reranking (documentos pasados directamente a generación)
-
-Esta decisión se basa en los resultados de evaluación RAGAS: el reranking mejora la precisión para contenido visual pero no aporta beneficio para chunks de texto puro en este corpus.
+| Campo                    | Tipo          | Descripción                                                                |
+| ------------------------ | ------------- | --------------------------------------------------------------------------- |
+| `question`             | string        | Pregunta original                                                           |
+| `final_query`          | string        | Consulta usada para retrieval (reescrita si `use_query_rewriting=true`)   |
+| `answer`               | string        | Respuesta generada en el idioma de la pregunta                              |
+| `collection`           | string        | Colección consultada                                                       |
+| `files_consulted`      | array[string] | IDs de los listings consultados                                             |
+| `context_docs`         | array[object] | Fragmentos usados como contexto (snippet + metadata)                        |
+| `reranker_used`        | boolean       | Si se aplicó reranking                                                     |
+| `query_rewriting_used` | boolean       | Si se aplicó reescritura de consulta                                        |
+| `response_time_sec`    | number        | Tiempo total de procesamiento en segundos                                   |
 
 ### Códigos de estado
 
-- `200 OK`: Consulta procesada correctamente
-- `400 Bad Request`: Pregunta o colección vacía
-- `500 Internal Server Error`: Error durante el procesamiento
+- `200 OK` — Consulta procesada correctamente
+- `400 Bad Request` — Pregunta o colección vacía
+- `500 Internal Server Error` — Error durante el procesamiento
 
-### Notas importantes
+### Notas
 
-- El idioma de la respuesta se detecta automáticamente desde la pregunta. Preguntas en español → respuesta en español; preguntas en inglés → respuesta en inglés.
-- El parámetro `k` (número de documentos a recuperar) se configura en `app/routers/ask.py` al construir el `RetrievalService` (valor actual: `k=10`)
-- `use_reranking` y `use_query_rewriting` están implementados vía `RAGGraphService` con los servicios `RerankingService` (cross-encoder `ms-marco-MiniLM-L-6-v2`) y `QueryRewritingService` (few-shot rewriting)
-- Si no hay documentos relevantes, el sistema indica claramente la falta de información sin inventar respuestas
+- Las preguntas fuera del dominio inmobiliario son rechazadas por el guardrail antes de llegar a retrieval.
+- Si no hay contexto suficiente, el sistema indica claramente la falta de información sin inventar respuestas.
+- `k=5` documentos recuperados por defecto (configurable en `app/routers/ask.py`).
+
+---
+
+## 3. Recommend
+
+**Endpoint**: `POST /api/v1/recommend`
+
+**Descripción**: Motor de recomendación de propiedades personalizado. Combina filtros estructurados explícitos con extracción de preferencias en lenguaje natural (vía LLM) para recuperar y recomendar los listings más relevantes.
+
+Soporta tres modos de uso:
+
+| Modo | Descripción | Ejemplo |
+|------|-------------|---------|
+| **Modo 1** — Filtros puros | Solo campos estructurados, sin texto libre | Buscar apartamentos en venta en Pocitos hasta USD 200k |
+| **Modo 2** — Texto libre | Solo `question`, sin filtros estructurados | "Busco algo tranquilo cerca del mar con terraza" |
+| **Modo 3** — Híbrido | Texto libre + filtros estructurados | Pregunta + `barrio`, `operation_type`, etc. explícitos |
+
+**Flujo**: payload → guardrail → `PreferenceExtractionService` (Modos 2 y 3) → `RetrievalService` con `PropertyFilters` → `GenerationService` → respuesta estructurada
+
+### Request Body
+
+**Modo 1 — Solo filtros**:
+
+```json
+{
+  "collection": "realstate_mvd",
+  "operation_type": "venta",
+  "property_type": "apartamentos",
+  "barrio": "POCITOS",
+  "max_price": 200000,
+  "has_elevator": true,
+  "max_recommendations": 3
+}
+```
+
+**Modo 2 — Solo texto libre**:
+
+```json
+{
+  "question": "Busco algo tranquilo cerca del mar con buena luz y terraza",
+  "collection": "realstate_mvd",
+  "max_recommendations": 5
+}
+```
+
+**Modo 3 — Híbrido**:
+
+```json
+{
+  "question": "que tenga ascensor y sea moderno, pensando en una familia con niños",
+  "collection": "realstate_mvd",
+  "operation_type": "venta",
+  "property_type": "apartamentos",
+  "barrio": "POCITOS",
+  "max_recommendations": 3
+}
+```
+
+### Parámetros
+
+| Parámetro              | Tipo    | Requerido | Default        | Descripción                                       |
+| ----------------------- | ------- | --------- | -------------- | -------------------------------------------------- |
+| `question`            | string  | ❌ No     | —             | Texto libre con preferencias (Modos 2 y 3)        |
+| `collection`          | string  | ✅ Sí    | —             | Colección a consultar (usar `"realstate_mvd"`)    |
+| `operation_type`      | string  | ❌ No     | —             | `"venta"` \| `"alquiler"`                        |
+| `property_type`       | string  | ❌ No     | —             | `"apartamentos"` \| `"casas"`                    |
+| `barrio`              | string  | ❌ No     | —             | Nombre del barrio (ej: `"POCITOS"`, `"CARRASCO"`) |
+| `min_price`           | number  | ❌ No     | —             | Precio mínimo en USD                              |
+| `max_price`           | number  | ❌ No     | —             | Precio máximo en USD                              |
+| `max_price_m2`        | number  | ❌ No     | —             | Precio máximo por m² en USD                      |
+| `min_bedrooms`        | integer | ❌ No     | —             | Dormitorios mínimos (0 = monoambiente)            |
+| `max_bedrooms`        | integer | ❌ No     | —             | Dormitorios máximos                               |
+| `min_surface`         | number  | ❌ No     | —             | Superficie mínima en m²                          |
+| `max_surface`         | number  | ❌ No     | —             | Superficie máxima en m²                          |
+| `max_dist_plaza`      | number  | ❌ No     | —             | Distancia máxima a una plaza (metros)             |
+| `max_dist_playa`      | number  | ❌ No     | —             | Distancia máxima a la playa (metros)              |
+| `has_pool`            | boolean | ❌ No     | —             | Piscina                                           |
+| `has_gym`             | boolean | ❌ No     | —             | Gimnasio                                          |
+| `has_elevator`        | boolean | ❌ No     | —             | Ascensor                                          |
+| `has_parrillero`      | boolean | ❌ No     | —             | Parrillero                                        |
+| `has_terrace`         | boolean | ❌ No     | —             | Terraza                                           |
+| `has_rooftop`         | boolean | ❌ No     | —             | Rooftop                                           |
+| `has_security`        | boolean | ❌ No     | —             | Seguridad / portería                             |
+| `has_storage`         | boolean | ❌ No     | —             | Depósito / baulera                               |
+| `has_parking`         | boolean | ❌ No     | —             | Cochera                                           |
+| `has_party_room`      | boolean | ❌ No     | —             | Salón de fiestas                                 |
+| `has_green_area`      | boolean | ❌ No     | —             | Área verde / jardín                              |
+| `has_playground`      | boolean | ❌ No     | —             | Área de juegos infantiles                        |
+| `has_visitor_parking` | boolean | ❌ No     | —             | Estacionamiento para visitas                      |
+| `max_recommendations` | integer | ❌ No     | `5`          | Máximo de propiedades a recomendar (1–10)        |
+
+### Response
+
+```json
+{
+  "question": "Busco algo tranquilo cerca del mar con buena luz y terraza",
+  "answer": "**Recomendación 1: Pocitos — USD 289.000**\n- Características: ...",
+  "collection": "realstate_mvd",
+  "listings_used": [
+    {
+      "id": "MLU811943004",
+      "barrio": "POCITOS",
+      "barrio_confidence": "consistent",
+      "operation_type": "venta",
+      "is_dual_intent": false,
+      "property_type": "apartamentos",
+      "price_fixed": 289000,
+      "currency_fixed": "USD",
+      "price_m2": 2778.85,
+      "bedrooms": 3,
+      "bathrooms": 3,
+      "surface_covered": 104,
+      "surface_total": 109,
+      "floor": 7,
+      "age": 43,
+      "garages": 1,
+      "dist_plaza": 160.55,
+      "dist_playa": 72.84,
+      "n_escuelas_800m": 4,
+      "source": "listing_MLU811943004",
+      "semantic_score": 0.5856,
+      "rerank_score": null,
+      "match_score": 20,
+      "rank": 1
+    }
+  ],
+  "files_consulted": ["listing_MLU811943004"],
+  "filters_applied": {
+    "operation_type": "venta",
+    "property_type": "apartamentos",
+    "has_terrace": true,
+    "max_dist_playa": 500
+  },
+  "response_time_sec": 18.4
+}
+```
+
+#### Estructura de `listings_used`
+
+| Campo               | Tipo           | Descripción                                                            |
+| ------------------- | -------------- | ----------------------------------------------------------------------- |
+| `id`              | string         | ID del listing (MercadoLibre)                                           |
+| `barrio`          | string         | Barrio normalizado                                                      |
+| `barrio_confidence` | string       | Confianza en la asignación del barrio: `consistent`, `marketing_inflation`, `low_confidence` |
+| `is_dual_intent`  | boolean        | `true` si el listing está disponible tanto para venta como alquiler   |
+| `operation_type`  | string         | `"venta"` \| `"alquiler"`                                            |
+| `property_type`   | string         | `"apartamentos"` \| `"casas"`                                        |
+| `price_fixed`     | number         | Precio en la moneda indicada en `currency_fixed`                       |
+| `currency_fixed`  | string         | `"USD"` \| `"UYU"`                                                   |
+| `price_m2`        | number \| null | Precio por m² en USD                                                  |
+| `bedrooms`        | integer \| null | Número de dormitorios                                                 |
+| `bathrooms`       | integer \| null | Número de baños                                                      |
+| `surface_covered` | number \| null | Superficie cubierta en m²                                             |
+| `surface_total`   | number \| null | Superficie total en m²                                                |
+| `floor`           | integer \| null | Piso                                                                  |
+| `age`             | integer \| null | Antigüedad en años                                                   |
+| `garages`         | integer \| null | Número de cocheras                                                    |
+| `dist_plaza`      | number \| null | Distancia a la plaza más cercana (metros)                             |
+| `dist_playa`      | number \| null | Distancia a la playa más cercana (metros)                             |
+| `n_escuelas_800m` | integer \| null | Número de escuelas en radio de 800m                                  |
+| `semantic_score`  | number         | Score de similitud semántica FAISS (raw, 0–1)                         |
+| `rerank_score`    | number \| null | Score del Cross-Encoder (`null` si reranking no activo)               |
+| `match_score`     | integer \| null | Score de coincidencia para el usuario (0–100)                        |
+| `rank`            | integer        | Posición en el ranking de recomendaciones                              |
+
+### Códigos de estado
+
+- `200 OK` — Recomendaciones generadas correctamente (o mensaje explicando por qué no hay resultados)
+- `422 Unprocessable Entity` — Parámetros inválidos
+- `500 Internal Server Error` — Error durante el procesamiento
+
+### Notas
+
+- Las preguntas fuera del dominio inmobiliario son rechazadas por el guardrail antes de llegar a retrieval.
+- Los filtros explícitos del payload **siempre tienen precedencia** sobre los extraídos por el LLM desde `question`.
+- Los amenities se combinan con lógica OR: se activan si el usuario los especifica en el payload **o** los menciona en la pregunta.
+- Si no hay listings que coincidan con los filtros, el sistema responde indicando qué ajustar en la búsqueda.
+- `barrio_confidence = "marketing_inflation"` indica que el barrio fue corregido por detección de inflación de marketing en el texto original del listing.
 
 ---
 
@@ -379,65 +339,71 @@ Esta decisión se basa en los resultados de evaluación RAGAS: el reranking mejo
 
 ### Modelos y Parámetros
 
-| Componente            | Modelo / Configuración                    | Ubicación                                    |
-| --------------------- | ------------------------------------------ | --------------------------------------------- |
-| **Embeddings**  | `models/gemini-embedding-001`            | `app/services/embedding_service.py`         |
-| **Chunking**    | Parámetros por estrategia                | `app/services/chunking_service.py`          |
-| **Retrieval**   | top-k = 10                                 | `app/routers/ask.py` (al construir `RetrievalService`)  |
-| **Reranking**   | `cross-encoder/ms-marco-MiniLM-L-6-v2`  | `app/services/reranking_service.py`         |
-| **VLM**         | `gemini-2.5-flash` (imágenes ≥ 150px)  | `app/services/multimodal_document_service.py` |
-| **Generation**  | `gemini-2.5-flash`, temperature=0.2      | `app/services/generation_service.py`        |
-| **Normalización** | NFKC + ACCENT_MAP + hyphen regex        | `app/utils/text_utils.py`                   |
+| Componente                  | Modelo / Configuración                   | Ubicación                                        |
+| --------------------------- | ----------------------------------------- | ------------------------------------------------- |
+| **Embeddings**        | `models/gemini-embedding-001` (3072 dim) | `app/services/embedding_service.py`             |
+| **Generation**        | `gemini-2.5-flash`, temperature=0.2, max_output_tokens=2000 | `app/services/generation_service.py` |
+| **Preference Extraction** | `gemini-2.5-flash`, temperature=0.0   | `app/services/preference_extraction_service.py` |
+| **Guardrail**         | `gemini-2.0-flash` (SDK directo)          | `app/routers/ask.py`                            |
+| **Retrieval**         | top-k = 5                                 | `app/routers/ask.py`                            |
+| **Reranking**         | `cross-encoder/ms-marco-MiniLM-L-6-v2`  | `app/services/reranking_service.py` (PENDIENTE) |
+| **Batch size**        | 50 docs/batch, delay=5s entre batches     | `app/services/embedding_service.py`             |
+| **Max desc chars**    | 5.000 chars (~1.562 tokens)               | `app/services/csv_document_service.py`          |
 
 ### Almacenamiento
 
-| Tipo                    | Ubicación                           | Descripción                |
-| ----------------------- | ------------------------------------ | --------------------------- |
-| **Documentos**    | `./docs/{collection_name}/`        | PDFs y archivos descargados |
-| **Índice FAISS** | `./faiss_index/{collection_name}/` | Vectorstore con embeddings (local) |
-| **Cloud Storage** | Bucket GCS (`CLOUD_STORAGE_BUCKET`) | Backup persistente del índice FAISS en GCP |
-| **Logs**          | `./logs/{processing_id}.json`      | Resultados de procesamiento |
+| Tipo                    | Ubicación                            | Descripción                                 |
+| ----------------------- | ------------------------------------- | -------------------------------------------- |
+| **Documentos**    | `./docs/realstate_mvd/listings.csv` | CSV de listings limpio                       |
+| **Índice FAISS** | `./faiss_index/realstate_mvd/`      | `index.faiss` (vectores) + `index.pkl` (metadata) |
+| **Cloud Storage** | Bucket GCS (`CLOUD_STORAGE_BUCKET`) | Backup del índice FAISS en GCP (opcional)   |
+| **Logs**          | `./logs/{processing_id}.json`       | Resultado del procesamiento asíncrono        |
 
 ---
 
 ## Flujo de Trabajo Típico
 
-1. **Verificar salud del sistema**
+### Primera vez (construir el índice)
 
-   ```bash
-   GET /api/v1/health
-   ```
+```bash
+# 1. Verificar que el sistema está levantado
+GET /api/v1/health
 
-2. **Cargar documentos (con procesamiento multimodal)**
+# 2. Iniciar indexación
+POST /api/v1/documents/load-from-csv
+Body: { "collection_name": "realstate_mvd" }
+# → Retorna: { "processing_id": "csv_7a880482d6fa" }
 
-   ```bash
-   POST /api/v1/documents/load-from-url
-   Body: {
-     "source_url": "https://drive.google.com/...",
-     "collection_name": "mi_coleccion",
-     "chunking_strategy": "recursive_character",
-     "multimodal": true
-   }
-   # Retorna: { "processing_id": "proc_abc123" }
-   ```
+# 3. Consultar estado (esperar ~10-15 min)
+GET /api/v1/documents/validate-load/csv_7a880482d6fa
+# → Verificar: "success": true, total_documents ~3.400
+```
 
-3. **Validar carga (esperar procesamiento)**
+### Consultas
 
-   ```bash
-   GET /api/v1/documents/load-from-url/proc_abc123
-   # Verificar: "rag_ready": true
-   ```
+```bash
+# Consulta de mercado
+POST /api/v1/ask
+Body: {
+  "question": "¿Cuánto cuesta el m² en Pocitos vs Carrasco?",
+  "collection": "realstate_mvd"
+}
 
-4. **Realizar consultas**
+# Recomendación con filtros explícitos
+POST /api/v1/recommend
+Body: {
+  "collection": "realstate_mvd",
+  "operation_type": "alquiler",
+  "max_price": 1200,
+  "has_elevator": true,
+  "max_recommendations": 5
+}
 
-   ```bash
-   POST /api/v1/ask
-   Body: {
-     "question": "¿Qué es un transformer?",
-     "collection": "mi_coleccion",
-     "use_reranking": true,
-     "use_query_rewriting": true
-   }
-   ```
-
----
+# Recomendación con texto libre
+POST /api/v1/recommend
+Body: {
+  "question": "Busco algo tranquilo para una familia con niños, cerca de plazas y escuelas",
+  "collection": "realstate_mvd",
+  "max_recommendations": 3
+}
+```
