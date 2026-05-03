@@ -117,7 +117,7 @@ class BigQueryListingService:
             table_id=settings.BQ_LISTINGS_TABLE,
             ids=ids,
             id_column=settings.BQ_LISTING_ID_COLUMN,
-            selected_columns=None,  # SELECT *
+            selected_columns=None,  # SELECT * <- more cost
         )
 
         if df.empty:

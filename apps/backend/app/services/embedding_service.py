@@ -18,9 +18,10 @@ class EmbeddingService:
     Servicio de embeddings para el backend FastAPI.
 
     Responsabilidades:
-      - Cargar un índice FAISS ya construido.
+      - Cargar un índice FAISS ya construido por el job-indexer.
       - Exponer el modelo de embeddings al RetrievalService.
-      - Estimar costo de embeddings online por consulta, si se quiere loggear.
+      - Estimar costo de embeddings online por consulta.
+      - Mantener compatibilidad con get_cost_stats() del servicio local.
 
     No construye índices.
     No genera embeddings masivos.
@@ -30,6 +31,7 @@ class EmbeddingService:
 
     def __init__(self, model_name: str = "models/gemini-embedding-001") -> None:
         self.model_name = model_name
+
         self.price_per_m_tokens = getattr(
             settings,
             "EMBEDDING_PRICE_PER_M_TOKENS",
@@ -40,12 +42,19 @@ class EmbeddingService:
             "CHARS_PER_TOKEN",
             3.2,
         )
+        self.request_timeout_seconds = getattr(
+            settings,
+            "EMBEDDING_REQUEST_TIMEOUT_SECONDS",
+            120,
+        )
 
         self.embeddings_model = GoogleGenerativeAIEmbeddings(
             model=model_name,
+            request_options={"timeout": self.request_timeout_seconds},
         )
 
         self.vectorstore: Optional[FAISS] = None
+        self._cost_stats: dict[str, Any] = {}
 
     # =========================================================================
     # CARGA DE FAISS
@@ -56,9 +65,10 @@ class EmbeddingService:
         Carga un índice FAISS previamente descargado a disco.
 
         En Cloud Run, el flujo esperado es:
+
           GCSIndexService.ensure_local_index()
-          → /tmp/faiss_index/{collection}/latest
-          → EmbeddingService.load_vectorstore(...)
+          -> /tmp/faiss_index/{collection}/latest
+          -> EmbeddingService.load_vectorstore(...)
         """
         index_path = Path(persist_path)
 
@@ -106,12 +116,12 @@ class EmbeddingService:
 
     def estimate_texts_cost(self, texts: list[str]) -> dict[str, Any]:
         """
-        Estima costo de embeddings para consultas online.
+        Estima tokens y costo USD a partir de caracteres.
 
         Importante:
-          RetrievalService invoca internamente el embedding de la query
-          cuando llama a FAISS similarity_search. Por eso esta función es
-          solo una estimación auxiliar para logging, no medición exacta.
+          RetrievalService invoca internamente el embedding de la query cuando
+          llama a FAISS similarity_search. Por eso esto es una estimación
+          auxiliar para logs, no una medición exacta de facturación.
         """
         total_chars = sum(len(text or "") for text in texts)
         estimated_tokens = int(total_chars / self.chars_per_token)
@@ -120,8 +130,9 @@ class EmbeddingService:
             estimated_tokens / 1_000_000
         ) * self.price_per_m_tokens
 
-        return {
+        stats = {
             "total_texts": len(texts),
+            "total_queries": len(texts),
             "total_chars": total_chars,
             "estimated_tokens": estimated_tokens,
             "embedding_cost_usd": round(embedding_cost_usd, 8),
@@ -129,6 +140,10 @@ class EmbeddingService:
             "price_per_m_tokens": self.price_per_m_tokens,
             "chars_per_token": self.chars_per_token,
         }
+
+        self._cost_stats = stats
+
+        return stats
 
     def estimate_query_cost(self, query: str) -> dict[str, Any]:
         """
@@ -140,8 +155,21 @@ class EmbeddingService:
     # GETTERS
     # =========================================================================
 
+    def get_embeddings_model(self) -> GoogleGenerativeAIEmbeddings:
+        return self.embeddings_model
+
     def get_vectorstore(self) -> Optional[FAISS]:
         return self.vectorstore
 
-    def get_embeddings_model(self) -> GoogleGenerativeAIEmbeddings:
-        return self.embeddings_model
+    def get_cost_stats(self) -> dict[str, Any]:
+        """
+        Retorna la última estimación de costo online.
+
+        En backend no representa costo masivo de construcción de índice.
+        Ese costo lo calcula el job-indexer.
+        """
+        return self._cost_stats
+
+    @property
+    def cost_stats(self) -> dict[str, Any]:
+        return self._cost_stats

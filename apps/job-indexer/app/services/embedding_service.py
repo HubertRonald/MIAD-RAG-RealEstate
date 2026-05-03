@@ -24,7 +24,7 @@ class EmbeddingService:
     Responsabilidades:
       - Generar embeddings masivos para listings.
       - Aplicar batch processing.
-      - Aplicar retry con backoff ante rate limits.
+      - Aplicar retry/backoff ante rate limits y timeouts.
       - Guardar checkpoint para retomar si el job falla.
       - Construir FAISS desde embeddings pregenerados.
       - Calcular estadísticas estimadas de costo.
@@ -35,6 +35,7 @@ class EmbeddingService:
 
     def __init__(self, model_name: str) -> None:
         self.model_name = model_name
+
         self.batch_size = settings.EMBEDDING_BATCH_SIZE
         self.max_batch_size = settings.EMBEDDING_MAX_BATCH_SIZE
         self.request_delay = settings.EMBEDDING_REQUEST_DELAY_SECONDS
@@ -42,8 +43,15 @@ class EmbeddingService:
         self.price_per_m_tokens = settings.EMBEDDING_PRICE_PER_M_TOKENS
         self.chars_per_token = settings.CHARS_PER_TOKEN
 
+        self.request_timeout_seconds = getattr(
+            settings,
+            "EMBEDDING_REQUEST_TIMEOUT_SECONDS",
+            120,
+        )
+
         self.embeddings_model = GoogleGenerativeAIEmbeddings(
             model=model_name,
+            request_options={"timeout": self.request_timeout_seconds},
         )
 
         self.vectorstore: Optional[FAISS] = None
@@ -59,7 +67,11 @@ class EmbeddingService:
         max_retries: int = 5,
     ) -> list[list[float]]:
         """
-        Genera embeddings para un batch con backoff exponencial ante 429.
+        Genera embeddings para un batch con retry.
+
+        Maneja:
+          - ResourceExhausted: rate limit / cuota.
+          - DeadlineExceeded: timeout del servicio.
 
         Args:
             batch:
@@ -68,9 +80,9 @@ class EmbeddingService:
                 Número máximo de reintentos.
 
         Returns:
-            Lista de vectores.
+            Lista de vectores de embeddings.
         """
-        delay = 30
+        rate_limit_delay = 30
 
         for attempt in range(max_retries):
             try:
@@ -83,15 +95,33 @@ class EmbeddingService:
                 logger.warning(
                     "embedding_rate_limit_retry",
                     extra={
-                        "delay_seconds": delay,
+                        "delay_seconds": rate_limit_delay,
                         "attempt": attempt + 1,
                         "max_retries": max_retries,
                         "batch_size": len(batch),
                     },
                 )
 
-                time.sleep(delay)
-                delay *= 2
+                time.sleep(rate_limit_delay)
+                rate_limit_delay *= 2
+
+            except google_exceptions.DeadlineExceeded:
+                if attempt == max_retries - 1:
+                    raise
+
+                wait_seconds = 30 * (attempt + 1)
+
+                logger.warning(
+                    "embedding_deadline_exceeded_retry",
+                    extra={
+                        "delay_seconds": wait_seconds,
+                        "attempt": attempt + 1,
+                        "max_retries": max_retries,
+                        "batch_size": len(batch),
+                    },
+                )
+
+                time.sleep(wait_seconds)
 
         return []
 
@@ -107,10 +137,17 @@ class EmbeddingService:
         )
 
     def _checkpoint_path(self, persist_path: str | Path | None = None) -> Path:
-        base_path = Path(persist_path) if persist_path else self._default_checkpoint_dir()
+        base_path = (
+            Path(persist_path)
+            if persist_path
+            else self._default_checkpoint_dir()
+        )
         return base_path / "_embedding_checkpoint.json"
 
-    def _load_checkpoint(self, persist_path: str | Path | None = None) -> dict[str, Any]:
+    def _load_checkpoint(
+        self,
+        persist_path: str | Path | None = None,
+    ) -> dict[str, Any]:
         """
         Carga checkpoint si existe.
 
@@ -191,7 +228,10 @@ class EmbeddingService:
             },
         )
 
-    def _clear_checkpoint(self, persist_path: str | Path | None = None) -> None:
+    def _clear_checkpoint(
+        self,
+        persist_path: str | Path | None = None,
+    ) -> None:
         checkpoint_path = self._checkpoint_path(persist_path)
 
         if checkpoint_path.exists():
@@ -232,6 +272,8 @@ class EmbeddingService:
 
         return {
             "total_texts": len(texts),
+            "total_documents": len(texts),
+            "total_chunks": len(texts),  # compatibilidad con servicio local
             "total_chars": total_chars,
             "estimated_tokens": estimated_tokens,
             "embedding_cost_usd": round(embedding_cost_usd, 6),
@@ -257,7 +299,6 @@ class EmbeddingService:
         """
         self._validate_texts(texts)
 
-        # Batch pequeño: procesar directo.
         if len(texts) <= self.max_batch_size:
             logger.info(
                 "embedding_single_batch_started",
@@ -271,7 +312,10 @@ class EmbeddingService:
 
             logger.info(
                 "embedding_single_batch_completed",
-                extra={"embeddings_count": len(embeddings)},
+                extra={
+                    "texts_count": len(texts),
+                    "embeddings_count": len(embeddings),
+                },
             )
 
             return embeddings
@@ -335,6 +379,14 @@ class EmbeddingService:
             )
 
             if batch_number < total_batches:
+                logger.info(
+                    "embedding_batch_delay",
+                    extra={
+                        "delay_seconds": self.request_delay,
+                        "next_batch": batch_number + 1,
+                        "total_batches": total_batches,
+                    },
+                )
                 time.sleep(self.request_delay)
 
         logger.info(
@@ -407,12 +459,7 @@ class EmbeddingService:
         )
 
         self.vectorstore = vectorstore
-
-        self._cost_stats = {
-            "total_documents": len(documents),
-            "total_chunks": len(documents),  # compatibilidad con el servicio local original
-            **cost_estimate,
-        }
+        self._cost_stats = cost_estimate
 
         self._clear_checkpoint(persist_path)
 
