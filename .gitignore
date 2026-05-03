@@ -86,8 +86,6 @@ instance/
 # Scrapy stuff:
 .scrapy
 
-# Sphinx documentation
-docs/_build/
 
 # PyBuilder
 .pybuilder/
@@ -624,8 +622,8 @@ derby.log
 dev/create-release/*final
 dev/create-release/*txt
 dev/pr-deps/
-docs/_site
-docs/api
+# docs/_site
+# docs/api
 sql/docs
 sql/site
 lib_managed/
@@ -653,7 +651,7 @@ src_managed/
 streaming-tests.log
 unit-tests.log
 work/
-docs/.jekyll-metadata
+# docs/.jekyll-metadata
 
 # For Hive
 TempStatsStore/
@@ -798,4 +796,8 @@ zsdoc/data
 
 # _realstate_ragas/
 requirements_local.txt
-valid_barrios__epsg4326_290426.csv
+data/inputs/raw_outputMLScrapper250226.csv
+data/outputs/valid_barrios_proj_290426.csv
+data/outputs/real_estate_listings.csv
+_realstate_ragas/faiss_index/realstate_mvd/index.faiss
+_realstate_ragas/faiss_index/realstate_mvd/index.pkl

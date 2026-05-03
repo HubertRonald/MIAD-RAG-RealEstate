@@ -53,13 +53,16 @@ from typing import List, Dict, Any, Tuple, Optional
 from pathlib import Path
 from datetime import datetime
 
+from dotenv import load_dotenv
+load_dotenv()   
+
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings(
     "ignore",
     message=".*position_ids.*",
     category=UserWarning,
 )
-
+warnings.filterwarnings("ignore", category=FutureWarning, module="mlflow")
 
 from ragas import SingleTurnSample, EvaluationDataset
 from ragas.llms import LangchainLLMWrapper

@@ -405,7 +405,6 @@ async def load_from_csv(
         """
         Indexa una colección de listings inmobiliarios desde un CSV local.
  
-        Reemplaza el flujo Google Drive → chunk → embed para datos CSV.
         Espera encontrar el archivo en: ./docs/{collection_name}/*.csv
  
         Flujo:

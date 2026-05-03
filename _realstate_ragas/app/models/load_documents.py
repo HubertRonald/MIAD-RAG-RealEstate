@@ -115,7 +115,7 @@ class LoadFromCsvRequest(BaseModel):
         barrio          : Filtro opcional — indexar solo un barrio específico.
     """
     collection_name: str = Field(
-        ...,
+        default="realstate_mvd",
         min_length=1,
         description="Nombre de la colección (carpeta en ./docs/)"
     )
@@ -147,13 +147,17 @@ class LoadFromCsvRequest(BaseModel):
  
     @validator("operation_type")
     def validate_operation_type(cls, v):
-        if v is not None and v not in ("venta", "alquiler"):
+        if v is None or v.strip() == "" or v == "string":
+            return None
+        if v not in ("venta", "alquiler"):
             raise ValueError("operation_type debe ser 'venta' o 'alquiler'")
         return v
- 
+
     @validator("property_type")
     def validate_property_type(cls, v):
-        if v is not None and v not in ("apartamentos", "casas"):
+        if v is None or v.strip() == "" or v == "string":
+            return None
+        if v not in ("apartamentos", "casas"):
             raise ValueError("property_type debe ser 'apartamentos' o 'casas'")
         return v
     

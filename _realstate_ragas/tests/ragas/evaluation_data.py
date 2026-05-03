@@ -57,7 +57,6 @@ from typing import List, Dict, Any
 
 ASK_QUESTIONS: List[Dict[str, str]] = [
     # Q1 — Características de propiedades en barrio específico
-    # (reemplaza: "rango de precios en Pocitos" — requería agregación)
     {
         "question": "¿Qué características tienen los apartamentos en venta en Pocitos con más de 2 dormitorios?",
         "reference": (
@@ -82,7 +81,6 @@ ASK_QUESTIONS: List[Dict[str, str]] = [
         ),
     },
     # Q3 — Amenities en edificios de alquiler en una zona específica
-    # (reemplaza: "cuánto cuesta alquilar 2 dorm en Pocitos" — requería precio promedio)
     {
         "question": "¿Qué amenities ofrecen los edificios de apartamentos en alquiler en Pocitos?",
         "reference": (
@@ -90,8 +88,7 @@ ASK_QUESTIONS: List[Dict[str, str]] = [
             "ofrecen amenities como piscina, gimnasio, parrillero y salón de fiestas. "
             "Los edificios más modernos suelen incluir seguridad las 24 horas, "
             "ascensor y cochera. Algunos cuentan con terraza común o rooftop. "
-            "La disponibilidad de amenities varía según la antigüedad y categoría "
-            "del edificio."
+            "La disponibilidad de amenities varía según la antigüedad y categoría del edificio."
         ),
     },
     # Q4 — Amenities en un segmento específico (kept — retrievable from listings)
@@ -107,7 +104,6 @@ ASK_QUESTIONS: List[Dict[str, str]] = [
         ),
     },
     # Q5 — Características del entorno de un barrio
-    # (reemplaza: "diferencia precio/m² Pocitos vs Centro" — requería comparación agregada)
     {
         "question": "¿Cómo describen los listings las propiedades disponibles en el barrio Centro de Montevideo?",
         "reference": (
@@ -144,7 +140,6 @@ ASK_QUESTIONS: List[Dict[str, str]] = [
         ),
     },
     # Q8 — Pregunta con filtros específicos de características
-    # (reemplaza: "barrios más accesibles" — requería ranking sobre todo el índice)
     {
         "question": "¿Hay apartamentos disponibles en Cordón con cochera y ascensor?",
         "reference": (
@@ -317,7 +312,7 @@ RECOMMEND_QUESTIONS: List[Dict[str, Any]] = [
             "operation_type": "venta",
             "property_type":  "apartamentos",
             "barrio":         "POCITOS",
-            "max_price":      250000,
+            "max_price":      400000,
             "min_bedrooms":   2,
             "max_bedrooms":   2,
             "has_pool":       True,

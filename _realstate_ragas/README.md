@@ -1,11 +1,8 @@
-
-#  - Sistema RAG 
-
 ## Integrantes del grupo
-Alejandra Barbosa Contreras  
-Jorge Mario Marin
-Paulina Luissi
-Ronald (Rony) Mendoza Canales 
+A. Barbosa
+J. Mario Marin
+P. Luissi
+R. Mendoza
 
 Backend del Sistema de Recomendación Opciones Inmobiliarias Arriendo|Compra Casas|Apartementos Montevideo
 
@@ -25,78 +22,24 @@ Backend del Sistema de Recomendación Opciones Inmobiliarias Arriendo|Compra Cas
 
 ##  <a id="descripción"></a>Descripción
 
-Sistema **RAG Multimodal (Retrieval-Augmented Generation)** desarrollado en **FastAPI** que permite:
+Sistema **RAG (Retrieval-Augmented Generation)** desarrollado en **FastAPI** que permite:
 
-- Carga y procesamiento automático de documentos desde XXXX 
-- Procesamiento  de csvs
+- Carga y procesamiento automático de documentos desde `docs/` (docs/realstate_mvd/listings por defecto)
+- Procesamiento de archivos csv (que almacena las publicaciones inmobiliarias)
 - Búsqueda semántica con vectores FAISS y embeddings Gemini
-- Reranking adaptativo: ms-marco **PEDIENTE**
-- Reescritura de consultas con LangGraph **PROBABLEMENTE NO**
-- Evaluación con RAGAS y observabilidad con LangSmith **Este ultimo PENDIENTE**
-
+- Reranking adaptativo: ms-marco **PENDIENTE**
+- Evaluación con RAGAS y observabilidad con LangSmith 
 ---
 
 ##  <a id="arquitectura"></a>Arquitectura del Sistema
 
-El sistema está diseñado con una **arquitectura de tres capas** que separa responsabilidades y facilita el mantenimiento:
-**OJO este diagraga requiere actualizacion**
-```mermaid
-flowchart LR
-    U(["👤 Usuario"])
-    BigQuery["BigQuerye<br>(fuente de documentos)"]
+![alt text](diagrams/realstate_ragas_architecture.png)
 
-    subgraph FE["Frontend"]
-        UI["Frontend Web"]
-    end
-
-    subgraph BE["Backend — GCP Cloud Run"]
-        API["API REST<br>FastAPI"]
-        RAG["Pipeline RAG<br>LangGraph"]
-        INGEST["Ingesta de<br>Documentos"]
-
-        API --> RAG
-        API --> INGEST
-    end
-
-    subgraph ST["Almacenamiento — GCP"]
-        FAISS["Base Vectorial<br>FAISS"]
-        GCS["Cloud Storage"]
-
-        FAISS -->|backup| GCS
-    end
-
-    GEMINI["Google Gemini<br>(LLM + Embeddings)"]
-    OBS["LangSmith<br>+ RAGAS"]
-
-    U <-->|consulta / respuesta| UI
-    UI <-->|HTTP / REST| API
-    GDRIVE -->|documentos| API
-
-    RAG -->|búsqueda semántica| FAISS
-    INGEST -->|vectores| FAISS
-
-    RAG -->|LLM calls| GEMINI
-    INGEST -->|embeddings| GEMINI
-
-    API -.->|trazas / métricas| OBS
-
-    classDef streamlit fill:#FFCA28,stroke:#F57F17,color:#000
-    classDef backend fill:#4285F4,stroke:#1A73E8,color:#fff
-    classDef storage fill:#7B1FA2,stroke:#4A148C,color:#fff
-    classDef google fill:#34A853,stroke:#1E8E3E,color:#fff
-    classDef obs fill:#FF6D00,stroke:#E65100,color:#fff
-
-    class UI streamlit
-    class API,RAG,INGEST backend
-    class FAISS,GCS storage
-    class GEMINI,GDRIVE google
-    class OBS obs
-```
 ### **API Layer**
 
 Manejo de peticiones HTTP y validación de datos:
 
-- `load_from_csv.py`: Carga asíncrona de documentos desde csv (local por ahora) PENDIENTE
+- `load_from_csv.py`: Carga asíncrona de documentos desde docs/realstate_mvd 
 - `ask.py`: Sistema de consultas RAG 
 - `validate_load.py`: Validación de estado de procesamiento asíncrono
 - `health.py`: Monitoreo de salud del sistema
@@ -105,21 +48,21 @@ Manejo de peticiones HTTP y validación de datos:
 
 Lógica de negocio y orquestación:
 
-- **Document Service**: Descarga y gestión de documentos desde BigQuery (`load_documents_service.py`)
-- **Chunking Service**: Fragmentación de documentos (`chunking_service.py`). Se conserva a estructura de un RAG convencional sin embargo en esta caso cada listing es un documento. 
-- **CSV Document Service**:Convierte las filas del CSV de listings inmobiliarios en objetos Document de LangChain, listos para ser embebidos y almacenados en FAISS 
+- **Document Service**: Descarga y gestión de documentos (localmente por ahora, luego desde BigQuery). (`load_documents_service.py`)
+- **Chunking Service**: Fragmentación de documentos (`chunking_service.py`). Se conserva a estructura de un RAG convencional (flexibilizado para aceptar documentos distinta natruraleza en el futuro) sin embargo, en esta caso cada listing dentro del csv se trata como un chunk individual. 
+- **CSV Document Service**:Convierte las filas del CSV de listings inmobiliarios en objetos Document de LangChain, listos para ser embebidos y almacenados en FAISS (`csv_document_service`)
+-  **Preference Extraction Service**: Extrae filtros estructurados (PropertyFilters) a partir de texto libre del usuario, usando Gemini para interpretar intenciones y preferencias de búsqueda.
 - **Embedding Service**: Generación de embeddings con Gemini y gestión del índice FAISS (`embedding_service.py`)
-- **RAG Graph Service**: Orquestación del flujo RAG con LangGraph (`rag_graph_service.py`). Incluye nodos de reescritura de consulta, retrieval, reranking adaptativo y generación.
-- **Query Rewriting Service**: Reescritura de consultas para mejorar el retrieval (`query_rewriting_service.py`). **PENDIENTE**
+- **RAG Graph Service**: Orquestación del flujo RAG con LangGraph (`rag_graph_service.py`). Incluye nodos de reescritura de consulta (para desarrollo futuro), retrieval, reranking adaptativo y generación.
 - **Retrieval Service**: Búsqueda de similitud semántica en el vectorstore FAISS (`retrieval_service.py`)
-- **Reranking Service**: Reranking adaptativo con Cross-Encoder (`reranking_service.py`). Usa `ms-marco-MiniLM-L-6-v2` para chunks con contenido visual (`[FIGURA]`, tablas). Chunks de texto puro no pasan por el reranking (`bypass_text_reranking=True`) según resultados de evaluación RAGAS. **PENDIENTE**
+- **Reranking Service**: Reranking adaptativo con Cross-Encoder (`reranking_service.py`) **PENDIENTE**
 - **Generation Service**: Generación de respuestas con Gemini (`generation_service.py`). De
 
 ### **Data Layer**
 
 Persistencia y almacenamiento:
 
-- **FileStorage** (`docs/`): Documentos originales descargados
+- **FileStorage** (`docs/`): almacen csv con listado del inmuebles
 - **VectorStore** (`faiss_index/`): Índice vectorial FAISS con embeddings Gemini
 - **CacheStore** (`logs/`): Logs de procesamiento y resultados
 
@@ -130,50 +73,46 @@ Persistencia y almacenamiento:
 ```
 RAGAS-Backend/
 ├── app/
-│   ├── models/                         # Modelos Pydantic
-│   │   ├── ask.py                      # Modelos para consultas RAG
-│   │   └── load_documents.py           # Modelos para carga de documentos
-│   ├── routers/                        # Endpoints de la API
-│   │   ├── ask.py                      # Consultas RAG
-│   │   ├── load_from_csv.py            # Carga de documentos
-│   │   ├── validate_load.py            # Validación de procesamiento
-│   │   └── health.py                   # Health check
-│   ├── services/                       # Servicios de negocio
-│   │   ├── chunking_service.py         # Fragmentación de documentos
-|   │   ├── csv_document_service.py     # Procesamiento de csv 
-│   │   ├── embedding_service.py        # Generación de embeddings
-│   │   ├── generation_service.py       # Generación de respuestas (Gemini)
-│   │   ├── retrieval_service.py        # Búsqueda semántica
-│   │   ├── rag_graph_service.py        # Orquestación con LangGraph
-│   │   ├── reranking_service.py        # Reranking con Cross-Encoder
-│   │   ├── query_rewriting_service.py  # Reescritura de consultas
-│   │   ├── google_drive.py             # Integración Google Drive
-│   │   └── load_documents_service.py   # Procesamiento de documentos
-│   └── utils/                          # Utilidades compartidas
-│       └── text_utils.py               # Normalización de texto (PDFs) PENDIENTE SI NO IMPLEMENTAMOS BORRAR
-│       └── norm_barrio_utils.py        # Normalización de Barrio 
-├── tests/                              # Tests 
-│   ├── chunking/                       # Tests de fragmentación
-│   ├── embedding/                      # Tests de embeddings
-│   ├── retrieval/                      # Tests de recuperación
-│   ├── generation/                     # Tests de generación
-│   ├── ragas/                          # Tests de evaluación RAGAS
-│   └── postman_tests/                  # Colecciones Postman
-├── main.py                             # Configuración FastAPI
-├── requirements.txt                    # Dependencias Python
-├── Dockerfile                          # Configuración Docker
-├── docker-compose.yml                  # Orquestación Docker
-├── pytest.ini                          # Configuración pytest
-├── .env                                # Variables de entorno (agregar)
-├── apikey.json                         # Service account Google Drive 
-├── docs/                               # Documentos descargados (auto-generado)
-│    └── realstate_mvd/                 # collection
-│           ├── listings.csv            # listings (local)
-├── faiss_index/                        # Índices vectoriales (auto-generado)
-│    └── realstate_mvd/                 # collection
-│           ├── index.faiss             # vector index (embeddings)
-│           └── index.pkl               # metadata (barrio, price, amenities, etc. per listing)
-└── logs/                               # Logs de procesamiento (auto-generado)
+│   ├── models/                                 # Modelos Pydantic
+│   │   ├── ask.py                              # Modelos para consultas RAG
+│   │   └── load_documents.py                   # Modelos para carga de documentos
+│   ├── routers/                                # Endpoints de la API
+│   │   ├── ask.py                              # Consultas RAG
+│   │   ├── load_from_csv.py                    # Carga de documentos
+│   │   ├── load_from_url.py                    # Carga de documentos desde url # USO FUTURO
+│   │   ├── validate_load.py                    # Validación de procesamiento
+│   │   └── health.py                           # Health check
+│   ├── services/                               # Servicios de negocio
+│   │   ├── chunking_service.py                 # Fragmentación de documentos
+|   │   ├── csv_document_service.py             # Procesamiento de csv 
+│   │   ├── embedding_service.py                # Generación de embeddings
+│   │   ├── generation_service.py               # Generación de respuestas (Gemini)
+│   │   ├── load_documents_service.py           # Procesamiento de documentos
+|   │   ├── preference_extraction_service.py    # Procesamiento de documentos
+│   │   ├── rag_graph_service.py                # Orquestación con LangGraph
+│   │   ├── reranking_service.py                # Reranking con Cross-Encoder
+│   │   └── retrieval_service.py                # Búsqueda semántica
+│   └── utils/                                  # Utilidades compartidas
+│       └── text_utils.py                       # Normalización de texto (PDFs) USO FUTURO 
+│       └── norm_barrio_utils.py                # Normalización de Barrio 
+├── diagrams/                                   # Diagrams Backend
+├── docs/                                       # Documentos descargados 
+│    └── realstate_mvd/                         # collection 
+│           └── listings.csv                    # listings (local)
+├── faiss_index/                                # Índices vectoriales (auto-generado)
+│    └── realstate_mvd/                         # collection
+│           ├── index.faiss                     # vector index (embeddings)
+│           └── index.pkl                       # metadata (barrio_fixed, price, amenities, etc. per listing)
+├── tests/                                      # Tests 
+│   └── ragas/                                  # Tests de evaluación RAGAS
+├── main.py                                     # Configuración FastAPI
+├── requirements.txt                            # Dependencias Python
+├── Dockerfile                                  # Configuración Docker
+├── docker-compose.yml                          # Orquestación Docker
+├── pytest.ini                                  # Configuración pytest
+├── .env                                        # Variables de entorno (agregar)
+├── apikey.json                                 # Service account Google Drive 
+└── logs/                                       # Logs de procesamiento (auto-generado)
 ```
 
 ---
@@ -188,37 +127,27 @@ RAGAS-Backend/
 
 ##  Flujo de Datos
 
-### 1. Carga de Documentos (texto)
+### 1. Carga de Documentos (csv)
 ```
-POST /load-from-url → Document Service → Chunking Service → normalize_text → Embedding → FAISS Index
-```
-
-### 2. Carga de Documentos (multimodal)
-```
-POST /load-from-url (multimodal=true) → Document Service → Chunking Service
-    → MultimodalDocumentService → [PyMuPDF texto + pdfplumber tablas + Gemini VLM imágenes]
-    → normalize_text → Embedding → FAISS Index
+POST /load-from-csv → Load Document Service → Process_csv → Embedding → FAISS Index
 ```
 
-### 3. Consulta RAG
+###  2. Consulta RAG
 ```
 POST /ask → RAG Graph Service
-    → [Query Rewriting] → Retrieval → [Reranking si contenido visual]
+    → [Query Rewriting] → Retrieval → 
+    → Generation (Gemini, idioma detectado) → Response
+```
+```
+POST /recommend → RAG 
+    → PreferenceExtractionService → Retrieval
     → Generation (Gemini, idioma detectado) → Response
 ```
 
-### 4. Validación
+### 3. Validación
 ```
-GET /load-from-url/{id} → Logs + FAISS Status → Validation Response
+GET /load-from-csv/{id} → Logs + FAISS Status → Validation Response
 ```
-
----
-
-## 🚀 <a id="cloud-run"></a>Despliegue
-
-La aplicación frontend está desplegada en:
-
-**
 
 ---
 
@@ -226,18 +155,26 @@ La aplicación frontend está desplegada en:
 
 ### Requisitos previos
 - Docker y Docker Compose instalados
-- Archivos `.env` y `apikey.json` configurados
+- Archivo `.env` 
 
 ### Variables de entorno requeridas
 
-```env
+Un ejemplo de este archivo está disponible en \local_tests\.ejemplo_env
+
+```.env
 GOOGLE_API_KEY=your_gemini_api_key
+
+# Opcional para trazabiliadad. 
 LANGCHAIN_API_KEY=your_langsmith_api_key
 LANGCHAIN_TRACING_V2=true
 LANGCHAIN_PROJECT= SucasaYa
 ```
 
 ### Levantar el contenedor
+
+- Asegúrate de tener Docker instalado y corriendo. 
+- Asegúrate de tener el archivo de varibales de entorno .env en el directorio raiz.
+- Asegúrate de tener el archivo "listings.csv" en docs/realstate_mvd 
 
 ```bash
 # Construir y levantar el contenedor
@@ -264,10 +201,13 @@ docker-compose build --no-cache
 # Limpiar caché de Python antes de reiniciar
 find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null
 ```
+>
+>Lo primero que debes hacer antes de realizar una consulta es construir el indice Faiss. Utiliza el >endpoint POST /load-from-csv para realizar esta operación. Ten en cuenta que esta construcción puede >tardar hasta 15 minutos
+>
 
 ---
 
-##  <a id="langsmith"></a>Observabilidad con LangSmith
+##  <a id="langsmith"></a>Observabilidad con LangSmith -OPCIONAL-
 
 El sistema integra **LangSmith** para trazabilidad completa del pipeline RAG:
 

@@ -63,7 +63,10 @@ class EmbeddingService:
         self.batch_size         = BATCH_SIZE
         self.max_batch_size     = MAX_BATCH_SIZE
         self.request_delay      = REQUEST_DELAY
-        self.embeddings_model   = GoogleGenerativeAIEmbeddings(model=self.model)
+        self.embeddings_model   = GoogleGenerativeAIEmbeddings(
+            model=self.model,
+            request_options={"timeout": 120},  # prevent 504 DeadlineExceeded on long listings
+        )
         self.vectorstore: Optional[FAISS] = None
         self.cloud_storage      = CloudStorageService()
         self._cost_stats: dict  = {}
@@ -99,6 +102,15 @@ class EmbeddingService:
                 )
                 time.sleep(delay)
                 delay *= 2  # 30 → 60 → 120 → 240 → 480
+            except google_exceptions.DeadlineExceeded:
+                if attempt == max_retries - 1:
+                    raise
+                wait = 30 * (attempt + 1)  # 30s, 60s, 90s... — server needs time to recover
+                print(
+                    f"[WARN] 504 Deadline Exceeded. Esperando {wait}s antes de reintentar "
+                    f"(intento {attempt + 1}/{max_retries})..."
+                )
+                time.sleep(wait)
         return []  # inalcanzable, satisface el type checker
 
     # =========================================================================

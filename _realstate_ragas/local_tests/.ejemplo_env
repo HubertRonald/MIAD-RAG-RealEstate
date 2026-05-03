@@ -1,0 +1,22 @@
+# Configuración de Gemini (recomendada)
+GOOGLE_API_KEY=tu_clave_api_aqui
+
+# Configuración de LangSmith (opcional)
+#LANGCHAIN_TRACING_V2=true
+LANGSMITH_API_KEY=tu_clave_api_aqui
+LANGSMITH_PROJECT="SucasaYa"
+
+# Configuración general
+PYTHONPATH=./src
+
+# OpenMP library conflict - on macOS
+KMP_DUPLICATE_LIB_OK=TRUE
+
+# ==================== CONFIGURACIÓN MLFLOW =====================================
+# MLflow — defaults work locally, only needed if changing them
+MLFLOW_EXPERIMENT_NAME=realstate_rag_evaluation       # opcional, este es el valor por defecto
+MLFLOW_TRACKING_URI=mlruns                            # opcional, este es el valor por defecto
+
+# ==================== Huggingface Token (crossEncoder used in reranking) ========
+HF_TOKEN=tu_token_aqui # opcional, si no se incluye aparecerá un warning al crear el indice FAISS
+# y cada vez que se hagan consultas, pero no afecta la operación del sistema.
