@@ -8,7 +8,10 @@ from fastapi import APIRouter, HTTPException
 
 from app.config.runtime import get_settings
 from app.services.rag_graph_service import RAGGraphService
-from app.services.service_cache import get_collection_services
+from app.services.service_cache import (
+    ensure_reranking_service,
+    get_collection_services,
+)
 from miad_rag_common.logging.structured_logging import get_logger
 from miad_rag_common.schemas.ask import AskRequest, AskResponse
 
@@ -158,28 +161,6 @@ Consulta:
 
 
 # =============================================================================
-# Reranker lazy loading
-# =============================================================================
-
-def _ensure_reranker(svc: dict[str, Any]) -> None:
-    """
-    Carga el reranker solo cuando el request lo pide.
-
-    Esto evita pagar el costo de memoria/startup del cross-encoder
-    en consultas normales donde use_reranking=False.
-    """
-    if svc.get("reranking") is not None:
-        return
-
-    from app.services.reranking_service import RerankingService
-
-    svc["reranking"] = RerankingService(
-        top_k=settings.RERANKING_TOP_K,
-        model_name=settings.RERANKING_MODEL,
-    )
-
-
-# =============================================================================
 # /ask — Market Q&A
 # =============================================================================
 
@@ -222,7 +203,7 @@ def ask_processing(
         }
 
     if use_reranking:
-        _ensure_reranker(svc)
+        ensure_reranking_service(svc)
 
     rag_graph_service = RAGGraphService(
         retrieval_service=svc["retrieval"],

@@ -450,7 +450,7 @@ def recommendation_processing(payload: RecommendRequest) -> dict[str, Any]:
     retrieval_service = svc["retrieval"]
     generation_service = svc["generation"]
     preference_service = svc["preference"]
-    bq_listing_service = svc.get("bq_listing")
+    bq_listing_service = svc["bq_listing"]
 
     explicit_filters = _request_to_property_filters(payload)
 
