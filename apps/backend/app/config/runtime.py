@@ -66,6 +66,7 @@ class RuntimeSettings(BaseSettings):
 
     # Cost estimation for online query embeddings.
     # Operational estimate only. Verify current pricing in official Gemini docs.
+    EMBEDDING_REQUEST_TIMEOUT_SECONDS: int = 120
     EMBEDDING_PRICE_PER_M_TOKENS: float = 0.025
     CHARS_PER_TOKEN: float = 3.2
 

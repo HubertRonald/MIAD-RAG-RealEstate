@@ -65,6 +65,7 @@ class IndexerSettings(BaseSettings):
     EMBEDDING_BATCH_SIZE: int = 50
     EMBEDDING_MAX_BATCH_SIZE: int = 100
     EMBEDDING_REQUEST_DELAY_SECONDS: int = 15
+    EMBEDDING_REQUEST_TIMEOUT_SECONDS: int = 120
 
     # Cost estimation for bulk embeddings.
     # Operational estimate only. Verify current pricing in official Gemini docs.

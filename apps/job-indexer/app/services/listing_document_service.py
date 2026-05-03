@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import re
 from typing import Optional
 
@@ -8,10 +7,11 @@ import numpy as np
 import pandas as pd
 from langchain.schema import Document
 
+from miad_rag_common.logging.structured_logging import get_logger
 from miad_rag_common.utils.norm_barrio_utils import normalize_barrio
 from miad_rag_common.utils.text_utils import clean_for_embedding
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # =============================================================================
@@ -34,7 +34,7 @@ COLUMNS_TO_DROP = [
     # Geometría redundante: BigQuery ya trae lat/lon como numéricos
     "geometry",
 
-    # barrio original se reemplaza por barrio_fixed
+    # barrio original se reemplaza por barrio_fixed para FAISS
     "barrio",
     "nrobarrio",
     "codba",
@@ -248,6 +248,34 @@ def _safe(value, default=None):
     return value
 
 
+def _normalize_text_key(value: str) -> str:
+    """
+    Normalización ligera para preservar valores cuando normalize_barrio()
+    no encuentra match.
+    """
+    return " ".join(str(value).upper().strip().split())
+
+
+def _normalize_barrio_or_original(value) -> Optional[str]:
+    """
+    Normaliza barrio usando catálogo conocido.
+
+    Si no hay match suficiente, preserva el valor original normalizado.
+    Esto evita perder barrio_fixed por un fallo de fuzzy matching.
+    """
+    raw = _safe(value)
+
+    if raw is None:
+        return None
+
+    raw_text = _normalize_text_key(str(raw))
+
+    if not raw_text:
+        return None
+
+    return normalize_barrio(raw_text) or raw_text
+
+
 def _format_price(price, currency) -> Optional[str]:
     p = _safe(price)
     c = _safe(currency, "")
@@ -322,6 +350,13 @@ class ListingDocumentService:
     - conserva metadata estructurada para filtros pre-semánticos;
     - usa barrio_fixed como barrio canónico;
     - conserva lat/lon sin crear latitude/longitude.
+
+    No incluye:
+    - load_documents();
+    - preview_document();
+    - get_available_segments().
+
+    Esas utilidades eran propias del flujo local con CSV.
     """
 
     def preprocess(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -329,25 +364,24 @@ class ListingDocumentService:
         Limpia y enriquece el DataFrame antes de convertirlo a Documents.
 
         Pasos:
-          1. Extrae flags binarios desde amenities.
-          2. Extrae flags adicionales desde title + description.
-          3. Aplica OR en flags presentes en ambas fuentes.
-          4. Elimina columnas irrelevantes.
-          5. Normaliza barrio_fixed si existe.
+          1. Normaliza barrio_fixed sin perder el valor original si no hay match.
+          2. Extrae flags binarios desde amenities.
+          3. Extrae flags adicionales desde title/description limpios y crudos.
+          4. Aplica OR en flags presentes en ambas fuentes.
+          5. Elimina columnas irrelevantes para FAISS.
         """
         df = df.copy()
 
         # --------------------------------------------------------------
-        # Normalizar barrio_fixed sin reemplazarlo por barrio.
-        # En BigQuery el campo canónico para filtros es barrio_fixed.
+        # 1. Normalizar barrio_fixed sin reemplazarlo por barrio.
         # --------------------------------------------------------------
         if "barrio_fixed" in df.columns:
             df["barrio_fixed"] = df["barrio_fixed"].apply(
-                lambda value: normalize_barrio(str(value)) if _safe(value) else None
+                _normalize_barrio_or_original
             )
 
         # --------------------------------------------------------------
-        # 1. Flags desde amenities.
+        # 2. Flags desde amenities.
         # Debe correr antes de eliminar amenities.
         # --------------------------------------------------------------
         amenities_col = (
@@ -375,22 +409,42 @@ class ListingDocumentService:
         )
 
         # --------------------------------------------------------------
-        # 2. Flags desde title + description.
-        # Se hace antes del drop para poder usar description original.
+        # 3. Flags desde title/description limpios y crudos.
+        # Usamos ambos para no perder señales de amenities.
         # --------------------------------------------------------------
-        title_series = (
-            df["title"].fillna("").astype(str)
-            if "title" in df.columns
+        # title_series = (
+        #     df["title"].fillna("").astype(str)
+        #     if "title" in df.columns
+        #     else pd.Series("", index=df.index)
+        # )
+
+        title_clean_series = (
+            df["title_clean"].fillna("").astype(str)
+            if "title_clean" in df.columns
             else pd.Series("", index=df.index)
         )
 
-        description_series = (
-            df["description"].fillna("").astype(str)
-            if "description" in df.columns
+        # description_series = (
+        #     df["description"].fillna("").astype(str)
+        #     if "description" in df.columns
+        #     else pd.Series("", index=df.index)
+        # )
+
+        description_clean_series = (
+            df["description_clean"].fillna("").astype(str)
+            if "description_clean" in df.columns
             else pd.Series("", index=df.index)
         )
 
-        text_col = (title_series + " " + description_series).str.lower()
+        text_col = (
+        #    title_series
+        #    + " "
+            + title_clean_series
+            + " "
+        #    + description_series
+        #    + " "
+            + description_clean_series
+        ).str.lower()
 
         for flag, pattern in AMENITY_DESC_FLAGS.items():
             from_description = text_col.str.contains(
@@ -416,7 +470,7 @@ class ListingDocumentService:
         )
 
         # --------------------------------------------------------------
-        # 3. Eliminar columnas irrelevantes.
+        # 4. Eliminar columnas irrelevantes para FAISS.
         # --------------------------------------------------------------
         cols_to_drop = [
             column for column in COLUMNS_TO_DROP
@@ -466,22 +520,34 @@ class ListingDocumentService:
             df = df[df["operation_type"] == operation_type].copy()
             logger.info(
                 "document_filter_applied",
-                extra={"field": "operation_type", "value": operation_type, "rows": len(df)},
+                extra={
+                    "field": "operation_type",
+                    "value": operation_type,
+                    "rows": len(df),
+                },
             )
 
         if property_type and "property_type" in df.columns:
             df = df[df["property_type"] == property_type].copy()
             logger.info(
                 "document_filter_applied",
-                extra={"field": "property_type", "value": property_type, "rows": len(df)},
+                extra={
+                    "field": "property_type",
+                    "value": property_type,
+                    "rows": len(df),
+                },
             )
 
         if barrio and "barrio_fixed" in df.columns:
-            normalized_barrio = normalize_barrio(barrio)
+            normalized_barrio = _normalize_barrio_or_original(barrio)
             df = df[df["barrio_fixed"] == normalized_barrio].copy()
             logger.info(
                 "document_filter_applied",
-                extra={"field": "barrio_fixed", "value": normalized_barrio, "rows": len(df)},
+                extra={
+                    "field": "barrio_fixed",
+                    "value": normalized_barrio,
+                    "rows": len(df),
+                },
             )
 
         if df.empty:
@@ -536,15 +602,14 @@ class ListingDocumentService:
         Construye el texto que representa el listing para embeddings.
 
         Estructura:
-        1. Resumen de la propiedad.
-        2. Ubicación l3.
-        3. Amenities.
-        4. Contexto urbano.
-        5. Nota de operación dual.
-        6. Título limpio/raw.
-        7. Descripción limpia/raw.
+          1. Resumen de la propiedad.
+          2. Ubicación l3.
+          3. Amenities.
+          4. Contexto urbano.
+          5. Nota de operación dual.
+          6. Título limpio/raw.
+          7. Descripción limpia/raw.
 
-        Nota:
         BigQuery tiene title_clean y description_clean.
         No existe desc_clean.
         """
@@ -571,19 +636,30 @@ class ListingDocumentService:
         if _safe(row.get("is_dual_intent"), False):
             sections.append("Disponible para venta y alquiler.")
 
-        title = (
-            _safe(row.get("title_clean"), "")
-            or _safe(row.get("title"), "")
-        )
+        # Title and description — usar SIEMPRE campos limpios para embeddings.
+        #
+        # En BigQuery existen:
+        #   - title_clean
+        #   - description_clean
+        #
+        # No existe desc_clean.
+        #
+        # Decisión de diseño:
+        #   Para el índice FAISS usamos texto limpio, no texto crudo.
+        #   El texto crudo queda en BigQuery y puede ser recuperado por el backend
+        #   para cards/frontend si se necesita, pero no se usa para embeddings.
+        title = _safe(row.get("title_clean"), "")
 
         if title:
             sections.append(f"Título: {str(title).strip()}")
 
-        description = (
-            _safe(row.get("description_clean"), "")
-            or _safe(row.get("description"), "")
-        )
+        description = _safe(row.get("description_clean"), "")
 
+        # Maximum description length before truncation.
+        # Gemini embedding-001 limit: 2048 tokens.
+        # At 3.2 chars/token, 5,000 chars ≈ 1,562 tokens.
+        # El cap es defensivo para mantener margen junto con el resumen,
+        # amenities y contexto urbano.
         max_desc_chars = 5_000
 
         if description:
@@ -798,12 +874,11 @@ class ListingDocumentService:
         Importante:
           - conserva lat/lon;
           - no crea latitude/longitude porque BigQuery no tiene esos campos;
-          - solo incluye campos definidos en METADATA_FIELDS.
+          - incluye todas las claves de METADATA_FIELDS para estructura estable.
         """
         metadata: dict = {}
 
         for field in METADATA_FIELDS:
-            if field in row.index:
-                metadata[field] = _to_python_native(row.get(field))
+            metadata[field] = _to_python_native(row.get(field))
 
         return metadata
