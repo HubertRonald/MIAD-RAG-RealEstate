@@ -230,12 +230,12 @@ resource "google_cloud_run_v2_service" "frontend" {
 
     # Streamlit puede atender varias sesiones, pero no conviene ponerlo altísimo
     # porque mantiene estado de sesión y puede consumir memoria.
-    max_instance_request_concurrency = 20
+    max_instance_request_concurrency = 10
     timeout                          = "300s"
 
     scaling {
       min_instance_count = 0
-      max_instance_count = 3
+      max_instance_count = 2
     }
 
     containers {
@@ -246,6 +246,8 @@ resource "google_cloud_run_v2_service" "frontend" {
           cpu    = "2"
           memory = "2Gi"
         }
+
+        startup_cpu_boost = true
       }
 
       env {
@@ -289,12 +291,12 @@ resource "google_cloud_run_v2_service" "backend" {
     service_account = google_service_account.backend.email
 
     # Backend RAG: mejor concurrencia baja mientras medimos memoria/latencia.
-    max_instance_request_concurrency = 4
+    max_instance_request_concurrency = 3
     timeout                          = "600s"
 
     scaling {
       min_instance_count = 0
-      max_instance_count = 3
+      max_instance_count = 2
     }
 
     containers {
@@ -304,9 +306,9 @@ resource "google_cloud_run_v2_service" "backend" {
         limits = {
           cpu    = "2"
           memory = "4Gi"
-
-          startup_cpu_boost = true
         }
+
+        startup_cpu_boost = true
       }
 
       # -----------------------------------------------------------------
@@ -543,7 +545,7 @@ resource "google_cloud_run_v2_job" "indexer" {
   template {
     template {
       service_account = google_service_account.indexer.email
-      timeout         = "7200s"
+      timeout         = "1800s"
       max_retries     = 0
 
       containers {
@@ -606,9 +608,14 @@ resource "google_cloud_run_v2_job" "indexer" {
           value = "false"
         }
 
-        env {
-          name  = "BQ_LIMIT"
-          value = "100"
+        dynamic "env" {
+          for_each = var.indexer_bq_limit == null ? [] : [var.indexer_bq_limit]
+          iterator = bq_limit
+
+          content {
+            name  = "BQ_LIMIT"
+            value = tostring(bq_limit.value)
+          }
         }
 
         env {
