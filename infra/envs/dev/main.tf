@@ -535,7 +535,7 @@ resource "google_cloud_run_v2_job" "indexer" {
   template {
     template {
       service_account = google_service_account.indexer.email
-      timeout         = "1800s"
+      timeout         = "3600s"
       max_retries     = 0
 
       containers {
@@ -544,7 +544,7 @@ resource "google_cloud_run_v2_job" "indexer" {
         resources {
           limits = {
             cpu    = "4"
-            memory = "4Gi"
+            memory = "8Gi"
           }
         }
 
