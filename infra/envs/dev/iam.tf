@@ -1,17 +1,15 @@
 # -------------------------------------------------------------------
 # BigQuery Job permissions
 # -------------------------------------------------------------------
-# These permissions are required because both backend and indexer run
-# BigQuery queries using the BigQuery Jobs API.
+# Required because both backend and indexer execute BigQuery queries.
 #
-# - backend:
-#     enriches FAISS-retrieved listing IDs with SELECT * from BigQuery.
+# Existing permissions in main.tf already cover:
+# - roles/bigquery.dataViewer for reading BigQuery data.
+# - roles/storage.objectViewer for backend index reads.
+# - roles/storage.objectAdmin for indexer index writes.
 #
-# - indexer:
-#     reads real_estate_listings from BigQuery to build the FAISS index.
-#
-# roles/bigquery.dataViewer allows reading tables.
-# roles/bigquery.jobUser allows creating query jobs.
+# This file only adds roles/bigquery.jobUser, which grants
+# bigquery.jobs.create so query jobs can be created.
 # -------------------------------------------------------------------
 
 resource "google_project_iam_member" "backend_bq_job_user" {
