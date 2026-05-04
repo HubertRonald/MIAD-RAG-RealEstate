@@ -1,15 +1,17 @@
 # -------------------------------------------------------------------
-# BigQuery Job permissions
+# BigQuery runtime permissions
 # -------------------------------------------------------------------
-# Required because both backend and indexer execute BigQuery queries.
-#
 # Existing permissions in main.tf already cover:
-# - roles/bigquery.dataViewer for reading BigQuery data.
-# - roles/storage.objectViewer for backend index reads.
-# - roles/storage.objectAdmin for indexer index writes.
+# - roles/bigquery.dataViewer for reading BigQuery tables.
+# - roles/storage.objectViewer for backend reads from the FAISS index bucket.
+# - roles/storage.objectAdmin for indexer writes to the FAISS index bucket.
 #
-# This file only adds roles/bigquery.jobUser, which grants
-# bigquery.jobs.create so query jobs can be created.
+# This file adds:
+# - roles/bigquery.jobUser:
+#     required for bigquery.jobs.create when running queries.
+#
+# - roles/bigquery.readSessionUser:
+#     required when pandas/to_dataframe uses the BigQuery Storage Read API.
 # -------------------------------------------------------------------
 
 resource "google_project_iam_member" "backend_bq_job_user" {
@@ -26,6 +28,28 @@ resource "google_project_iam_member" "backend_bq_job_user" {
 resource "google_project_iam_member" "indexer_bq_job_user" {
   project = var.project_id
   role    = "roles/bigquery.jobUser"
+  member  = "serviceAccount:${google_service_account.indexer.email}"
+
+  depends_on = [
+    google_project_service.services,
+    google_service_account.indexer,
+  ]
+}
+
+resource "google_project_iam_member" "backend_bq_read_session_user" {
+  project = var.project_id
+  role    = "roles/bigquery.readSessionUser"
+  member  = "serviceAccount:${google_service_account.backend.email}"
+
+  depends_on = [
+    google_project_service.services,
+    google_service_account.backend,
+  ]
+}
+
+resource "google_project_iam_member" "indexer_bq_read_session_user" {
+  project = var.project_id
+  role    = "roles/bigquery.readSessionUser"
   member  = "serviceAccount:${google_service_account.indexer.email}"
 
   depends_on = [
