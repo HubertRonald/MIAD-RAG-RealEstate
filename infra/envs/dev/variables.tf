@@ -103,6 +103,12 @@ variable "frontend_allowed_members" {
   default     = []
 }
 
+variable "backend_invoker_members_dev" {
+  type        = list(string)
+  description = "Usuarios o service accounts autorizados temporalmente a invocar el backend Cloud Run en dev."
+  default     = []
+}
+
 variable "bq_dashboard_viewer_members" {
   type        = list(string)
   description = "Users or groups allowed to query the BigQuery dataset from Looker Studio"
