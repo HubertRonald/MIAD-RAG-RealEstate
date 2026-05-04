@@ -9,6 +9,24 @@ on:
       - ".github/workflows/frontend-ci.yml"
 
   workflow_dispatch:
+    inputs:
+      build_image:
+        description: "Build and push Docker image"
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+      deploy:
+        description: "Build, push and deploy frontend to Cloud Run"
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
 
 permissions:
   contents: read
@@ -46,18 +64,24 @@ jobs:
           gcloud auth configure-docker ${{ vars.GCP_REGION }}-docker.pkg.dev --quiet
 
       - name: Build and push frontend image
+        if: github.event_name == 'push' || inputs.build_image == 'true'
         run: |
           IMAGE_BASE="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPO }}/${IMAGE_NAME}"
           IMAGE_URI="${IMAGE_BASE}:${{ github.sha }}"
 
-          docker build -t "$IMAGE_URI" -t "${IMAGE_BASE}:latest" apps/frontend
+          docker build \
+            -f apps/frontend/Dockerfile \
+            -t "$IMAGE_URI" \
+            -t "${IMAGE_BASE}:latest" \
+            .
+          
           docker push "$IMAGE_URI"
           docker push "${IMAGE_BASE}:latest"
 
           echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
 
       - name: Create or update frontend Cloud Run service
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.deploy == 'true')
         run: |
           if gcloud run services describe "$SERVICE_NAME" \
             --region "${{ vars.GCP_REGION }}" \
