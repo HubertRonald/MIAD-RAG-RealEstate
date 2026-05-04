@@ -51,6 +51,7 @@ class EmbeddingService:
 
         self.embeddings_model = GoogleGenerativeAIEmbeddings(
             model=model_name,
+            google_api_key=settings.google_genai_api_key,
             request_options={"timeout": self.request_timeout_seconds},
         )
 

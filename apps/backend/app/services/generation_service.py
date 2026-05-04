@@ -97,6 +97,7 @@ class GenerationService:
             model=self.model,
             temperature=self.temperature,
             max_output_tokens=self.max_tokens,
+            google_api_key=settings.google_genai_api_key,
         )
 
         self.market_prompt = ChatPromptTemplate.from_template(
