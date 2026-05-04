@@ -202,7 +202,7 @@ resource "google_bigquery_table" "real_estate_listings" {
   project             = var.project_id
   dataset_id          = google_bigquery_dataset.rag.dataset_id
   table_id            = var.bigquery_main_table_id
-  deletion_protection = true
+  deletion_protection = false
   schema              = file("${path.module}/../../../data/schemas/real_estate_listings_schema.json")
   labels              = var.labels
 }
@@ -211,7 +211,7 @@ resource "google_bigquery_table" "rag_eval_results" {
   project             = var.project_id
   dataset_id          = google_bigquery_dataset.rag.dataset_id
   table_id            = var.bigquery_eval_table_id
-  deletion_protection = true
+  deletion_protection = false
   schema              = file("${path.module}/../../../data/schemas/rag_eval_results_schema.json")
   labels              = var.labels
 }
