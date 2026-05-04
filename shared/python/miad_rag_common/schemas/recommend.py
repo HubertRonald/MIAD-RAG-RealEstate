@@ -1,16 +1,16 @@
 from __future__ import annotations
-from typing import Optional, List, Union
+from typing import Any, Optional, List, Union
 from pydantic import BaseModel, Field
-from miad_rag_common.schemas.listing import ListingInfo
 
 
 class RecommendRequest(BaseModel):
     """
     Request para el endpoint de recomendaciones inmobiliarias.
 
-    Combina una pregunta en lenguaje natural con filtros estructurados
-    opcionales. Los filtros se aplican ANTES de la búsqueda semántica,
-    reduciendo el espacio de búsqueda al segmento relevante.
+    Soporta:
+    - solo filtros estructurados,
+    - solo texto libre,
+    - texto libre + filtros.
     """
 
     question: str = ""
@@ -54,7 +54,8 @@ class RecommendRequest(BaseModel):
     has_playground: bool = False
     has_visitor_parking: bool = False
 
-    # Control
+    # Control interno del frontend.
+    # En Streamlit puede estar oculto para el usuario.
     max_recommendations: int = 5
 
 
@@ -62,21 +63,25 @@ class RecommendResponse(BaseModel):
     """
     Respuesta del endpoint de recomendaciones inmobiliarias.
 
-    Atributos:
-        question            : Solicitud original del cliente.
-        answer              : Texto narrativo con las recomendaciones del modelo.
-        collection          : Colección FAISS consultada.
-        listings_used       : Metadata estructurada de los listings recomendados.
-                              Incluye match_score y rank para uso directo en frontend.
-        files_consulted     : Lista de IDs de listings consultados.
-        filters_applied     : Filtros que se aplicaron en la búsqueda.
-        response_time_sec   : Tiempo total de procesamiento.
+    Para este primer alcance, listings_used se deja como lista de dicts para
+    permitir devolver el registro completo enriquecido desde BigQuery.
+
+    Cada item puede incluir:
+    - columnas completas de real_estate_listings,
+    - campos display para frontend,
+    - scores de retrieval,
+    - rank,
+    - map_point,
+    - retrieval_snippet.
     """
 
     question: str
     answer: str
     collection: str
-    listings_used: List[ListingInfo] = []
-    files_consulted: List[str] = []
-    filters_applied: dict = {}
+
+    listings_used: list[dict[str, Any]] = Field(default_factory=list)
+    map_points: list[dict[str, Any]] = Field(default_factory=list)
+
+    files_consulted: list[str] = Field(default_factory=list)
+    filters_applied: dict[str, Any] = Field(default_factory=dict)
     response_time_sec: float

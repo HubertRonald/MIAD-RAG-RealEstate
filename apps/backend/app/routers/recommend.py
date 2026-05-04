@@ -424,8 +424,8 @@ def recommendation_processing(payload: RecommendRequest) -> dict[str, Any]:
       4. Enriquece filtros con PreferenceExtractionService.
       5. Ejecuta retrieval con filtros + scores.
       6. Extrae IDs y consulta BigQuery para enriquecer datos.
-      7. Genera narrativa.
-      8. Inserta match_score y rank.
+      7. Genera narrativa con GenerationService.
+      8. Construye payload completo para frontend desde BigQuery.
     """
     start_time = time.time()
     collection = payload.collection.strip()
@@ -442,6 +442,7 @@ def recommendation_processing(payload: RecommendRequest) -> dict[str, Any]:
             ),
             "collection": collection,
             "listings_used": [],
+            "map_points": [],
             "files_consulted": [],
             "filters_applied": {},
             "response_time_sec": round(time.time() - start_time, 3),
@@ -471,6 +472,7 @@ def recommendation_processing(payload: RecommendRequest) -> dict[str, Any]:
             "collection": collection,
             "query": query,
             "filters_applied": _filters_dict(filters),
+            "max_recommendations": payload.max_recommendations,
         },
     )
 
@@ -488,35 +490,52 @@ def recommendation_processing(payload: RecommendRequest) -> dict[str, Any]:
             ),
             "collection": collection,
             "listings_used": [],
+            "map_points": [],
             "files_consulted": [],
             "filters_applied": _filters_dict(filters),
             "response_time_sec": round(time.time() - start_time, 3),
         }
 
-    docs = [doc for doc, _score in doc_score_pairs]
-    semantic_scores = [score for _doc, score in doc_score_pairs]
+    # -------------------------------------------------------------------------
+    # Seleccion final de candidatos
+    # -------------------------------------------------------------------------
+    # Retrieval puede devolver más documentos que max_recommendations.
+    # Para que la narrativa, las cards y el mapa conversen entre sí, usamos
+    # el mismo subconjunto en generación y en payload enriquecido.
+    # -------------------------------------------------------------------------
+    selected_pairs = doc_score_pairs[: payload.max_recommendations]
+    selected_docs = [doc for doc, _score in selected_pairs]
+    selected_scores = [score for _doc, score in selected_pairs]
 
     listing_overrides: dict[str, dict[str, Any]] = {}
 
     if bq_listing_service is not None:
-        listing_ids = bq_listing_service.extract_listing_ids(docs)
+        listing_ids = bq_listing_service.extract_listing_ids(selected_docs)
         listing_overrides = bq_listing_service.fetch_by_ids(listing_ids)
 
         logger.info(
             "recommend_bigquery_enrichment_completed",
             extra={
                 "collection": collection,
+                "listing_ids": listing_ids,
                 "listing_ids_count": len(listing_ids),
                 "listing_overrides_count": len(listing_overrides),
             },
         )
 
+    # -------------------------------------------------------------------------
+    # Generacion narrativa
+    # -------------------------------------------------------------------------
+    # GenerationService puede seguir usando listing_overrides para producir una
+    # respuesta más rica, pero la salida final para Streamlit NO depende del
+    # ListingInfo compacto que retorna GenerationService.
+    # -------------------------------------------------------------------------
     try:
         generated = generation_service.generate_recommendations(
             question=query,
-            retrieved_docs=docs,
+            retrieved_docs=selected_docs,
             max_recommendations=payload.max_recommendations,
-            semantic_scores=semantic_scores,
+            semantic_scores=selected_scores,
             listing_overrides=listing_overrides,
         )
 
@@ -525,21 +544,53 @@ def recommendation_processing(payload: RecommendRequest) -> dict[str, Any]:
         # que no recibía listing_overrides.
         generated = generation_service.generate_recommendations(
             question=query,
-            retrieved_docs=docs,
+            retrieved_docs=selected_docs,
             max_recommendations=payload.max_recommendations,
-            semantic_scores=semantic_scores,
+            semantic_scores=selected_scores,
         )
 
-    enriched_listings = _inject_rank_and_match_score(
-        generated.get("listings_used", []),
-    )
+    # -------------------------------------------------------------------------
+    # Frontend payload enriquecido desde BigQuery
+    # -------------------------------------------------------------------------
+    # GenerationService devuelve ListingInfo compacto para compatibilidad,
+    # pero el frontend necesita el registro completo de BigQuery:
+    # title, description, image_urls, lat, lon, url, thumbnail_url, etc.
+    #
+    # Por eso aquí construimos listings_used desde BigQueryListingService,
+    # usando los mismos docs/scores seleccionados que se usaron para la narrativa.
+    # -------------------------------------------------------------------------
+    if bq_listing_service is not None:
+        frontend_records = bq_listing_service.documents_to_frontend_records(
+            docs=selected_docs,
+            semantic_scores=selected_scores,
+            listing_overrides=listing_overrides,
+            match_score_fn=_cosine_to_match_score,
+        )
+
+        frontend_records = _inject_rank_and_match_score(frontend_records)
+
+        map_points = bq_listing_service.build_map_points_from_records(
+            frontend_records,
+        )
+    else:
+        frontend_records = _inject_rank_and_match_score(
+            generated.get("listings_used", []),
+        )
+        map_points = []
 
     response = {
         "question": payload.question,
         "answer": generated.get("answer", ""),
         "collection": collection,
-        "listings_used": enriched_listings,
-        "files_consulted": generated.get("sources", []),
+        "listings_used": frontend_records,
+        "map_points": map_points,
+        "files_consulted": generated.get(
+            "sources",
+            [
+                str((doc.metadata or {}).get("source") or (doc.metadata or {}).get("id"))
+                for doc in selected_docs
+            ],
+        ),
         "filters_applied": _filters_dict(filters),
         "response_time_sec": round(time.time() - start_time, 3),
     }
@@ -548,8 +599,14 @@ def recommendation_processing(payload: RecommendRequest) -> dict[str, Any]:
         "recommend_completed",
         extra={
             "collection": collection,
-            "results_count": len(enriched_listings),
+            "results_count": len(frontend_records),
+            "map_points_count": len(map_points),
             "response_time_sec": response["response_time_sec"],
+            "listing_ids": [
+                record.get("id")
+                for record in frontend_records
+                if isinstance(record, dict)
+            ],
         },
     )
 
