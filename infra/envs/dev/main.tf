@@ -256,11 +256,6 @@ resource "google_cloud_run_v2_service" "frontend" {
       }
 
       env {
-        name  = "PORT"
-        value = "8080"
-      }
-
-      env {
         name  = "BACKEND_URL"
         value = google_cloud_run_v2_service.backend.uri
       }
@@ -327,11 +322,6 @@ resource "google_cloud_run_v2_service" "backend" {
       env {
         name  = "ENV"
         value = "dev"
-      }
-
-      env {
-        name  = "PORT"
-        value = "8080"
       }
 
       env {
