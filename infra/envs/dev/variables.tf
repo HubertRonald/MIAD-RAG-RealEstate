@@ -93,7 +93,7 @@ variable "job_image" {
 variable "indexer_bq_limit" {
   type        = number
   description = "Optional BigQuery LIMIT for indexer runs. Use null for full"
-  default     = 500
+  default     = 1000
   nullable    = true
 }
 
