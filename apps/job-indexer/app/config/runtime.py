@@ -98,7 +98,7 @@ class IndexerSettings(BaseSettings):
     @property
     def gcs_latest_prefix(self) -> str:
         return f"{self.INDEX_PREFIX.strip('/')}/{self.COLLECTION}/latest"
-
+    
     def gcs_version_prefix(self, version: str) -> str:
         return f"{self.INDEX_PREFIX.strip('/')}/{self.COLLECTION}/versions/{version}"
 

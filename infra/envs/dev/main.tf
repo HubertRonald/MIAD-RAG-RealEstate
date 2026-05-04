@@ -228,14 +228,34 @@ resource "google_cloud_run_v2_service" "frontend" {
   template {
     service_account = google_service_account.frontend.email
 
+    # Streamlit puede atender varias sesiones, pero no conviene ponerlo altísimo
+    # porque mantiene estado de sesión y puede consumir memoria.
+    max_instance_request_concurrency = 20
+    timeout                          = "300s"
+
+    scaling {
+      min_instance_count = 0
+      max_instance_count = 3
+    }
+
     containers {
       image = var.frontend_image
 
       resources {
         limits = {
-          cpu    = "1"
-          memory = "512Mi"
+          cpu    = "2"
+          memory = "2Gi"
         }
+      }
+
+      env {
+        name  = "ENV"
+        value = "dev"
+      }
+
+      env {
+        name  = "PORT"
+        value = "8080"
       }
 
       env {
@@ -268,14 +288,101 @@ resource "google_cloud_run_v2_service" "backend" {
   template {
     service_account = google_service_account.backend.email
 
+    # Backend RAG: mejor concurrencia baja mientras medimos memoria/latencia.
+    max_instance_request_concurrency = 4
+    timeout                          = "600s"
+
+    scaling {
+      min_instance_count = 0
+      max_instance_count = 3
+    }
+
     containers {
       image = var.backend_image
 
       resources {
         limits = {
-          cpu    = "1"
-          memory = "1Gi"
+          cpu    = "2"
+          memory = "4Gi"
+
+          startup_cpu_boost = true
         }
+      }
+
+      # -----------------------------------------------------------------
+      # App/runtime
+      # -----------------------------------------------------------------
+      env {
+        name  = "APP_NAME"
+        value = "miad-rag-backend"
+      }
+
+      env {
+        name  = "APP_VERSION"
+        value = "0.1.0"
+      }
+
+      env {
+        name  = "ENV"
+        value = "dev"
+      }
+
+      env {
+        name  = "PORT"
+        value = "8080"
+      }
+
+      env {
+        name  = "LOG_LEVEL"
+        value = "INFO"
+      }
+
+      env {
+        name  = "JSON_LOGS"
+        value = "true"
+      }
+
+      env {
+        name  = "CORS_ALLOW_ORIGINS"
+        value = "*"
+      }
+
+      # -----------------------------------------------------------------
+      # GCP
+      # -----------------------------------------------------------------
+      env {
+        name  = "PROJECT_ID"
+        value = var.project_id
+      }
+
+      env {
+        name  = "GCP_LOCATION"
+        value = var.region
+      }
+
+      # -----------------------------------------------------------------
+      # BigQuery
+      # Nombres alineados con RuntimeSettings del backend.
+      # Mantengo también BQ_DATASET/BQ_TABLE por compatibilidad.
+      # -----------------------------------------------------------------
+      env {
+        name  = "BQ_PROJECT_ID"
+        value = var.project_id
+      }
+
+      env {
+        name  = "BQ_DATASET_ID"
+        value = var.bigquery_dataset_id
+      }
+
+      env {
+        name  = "BQ_LISTINGS_TABLE"
+        value = var.bigquery_main_table_id
+      }
+
+      env {
+        name  = "BQ_LOCATION"
+        value = var.region
       }
 
       env {
@@ -288,9 +395,63 @@ resource "google_cloud_run_v2_service" "backend" {
         value = var.bigquery_main_table_id
       }
 
+      # -----------------------------------------------------------------
+      # GCS / FAISS
+      # -----------------------------------------------------------------
       env {
         name  = "INDEX_BUCKET"
         value = google_storage_bucket.index.name
+      }
+
+      env {
+        name  = "INDEX_PREFIX"
+        value = "faiss"
+      }
+
+      env {
+        name  = "INDEX_LOCAL_ROOT"
+        value = "/tmp/faiss_index"
+      }
+
+      env {
+        name  = "DEFAULT_COLLECTION"
+        value = "realstate_mvd"
+      }
+
+      # -----------------------------------------------------------------
+      # Retrieval
+      # -----------------------------------------------------------------
+      env {
+        name  = "RETRIEVAL_K"
+        value = "10"
+      }
+
+      env {
+        name  = "RETRIEVAL_FETCH_K"
+        value = "200"
+      }
+
+      # -----------------------------------------------------------------
+      # Gemini
+      # -----------------------------------------------------------------
+      env {
+        name  = "GEMINI_EMBEDDING_MODEL"
+        value = "models/gemini-embedding-001"
+      }
+
+      env {
+        name  = "GEMINI_GENERATION_MODEL"
+        value = "gemini-2.5-flash"
+      }
+
+      env {
+        name  = "GEMINI_TEMPERATURE"
+        value = "0.2"
+      }
+
+      env {
+        name  = "GEMINI_MAX_OUTPUT_TOKENS"
+        value = "5000"
       }
 
       env {
@@ -312,6 +473,52 @@ resource "google_cloud_run_v2_service" "backend" {
           }
         }
       }
+
+      # -----------------------------------------------------------------
+      # Cost estimation
+      # -----------------------------------------------------------------
+      env {
+        name  = "EMBEDDING_PRICE_PER_M_TOKENS"
+        value = "0.025"
+      }
+
+      env {
+        name  = "CHARS_PER_TOKEN"
+        value = "3.2"
+      }
+
+      # -----------------------------------------------------------------
+      # Reranking
+      # Mantener apagado mientras no subamos memoria o validemos latencia.
+      # -----------------------------------------------------------------
+      env {
+        name  = "ENABLE_RERANKING_MODEL"
+        value = "false"
+      }
+
+      env {
+        name  = "RERANKING_MODEL"
+        value = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+      }
+
+      env {
+        name  = "RERANKING_TOP_K"
+        value = "3"
+      }
+
+      # -----------------------------------------------------------------
+      # Frontend scoring
+      # -----------------------------------------------------------------
+      env {
+        name  = "SCORE_LOW"
+        value = "0.78"
+      }
+
+      env {
+        name  = "SCORE_HIGH"
+        value = "0.92"
+      }
+
     }
   }
 
@@ -336,30 +543,72 @@ resource "google_cloud_run_v2_job" "indexer" {
   template {
     template {
       service_account = google_service_account.indexer.email
+      timeout         = "7200s"
+      max_retries     = 0
 
       containers {
         image = var.job_image
 
         resources {
           limits = {
-            cpu    = "1"
-            memory = "1Gi"
+            cpu    = "2"
+            memory = "4Gi"
           }
         }
 
         env {
-          name  = "BQ_DATASET"
+          name  = "PROJECT_ID"
+          value = var.project_id
+        }
+
+        env {
+          name  = "GCP_LOCATION"
+          value = var.region
+        }
+
+        env {
+          name  = "BQ_PROJECT_ID"
+          value = var.project_id
+        }
+
+        env {
+          name  = "BQ_DATASET_ID"
           value = var.bigquery_dataset_id
         }
 
         env {
-          name  = "BQ_TABLE"
+          name  = "BQ_LISTINGS_TABLE"
           value = var.bigquery_main_table_id
+        }
+
+        env {
+          name  = "BQ_LOCATION"
+          value = var.region
+        }
+
+        env {
+          name  = "COLLECTION"
+          value = "realstate_mvd"
         }
 
         env {
           name  = "INDEX_BUCKET"
           value = google_storage_bucket.index.name
+        }
+
+        env {
+          name  = "INDEX_PREFIX"
+          value = "faiss"
+        }
+
+        env {
+          name  = "DRY_RUN"
+          value = "false"
+        }
+
+        env {
+          name  = "BQ_LIMIT"
+          value = "100"
         }
 
         env {
@@ -382,8 +631,6 @@ resource "google_cloud_run_v2_job" "indexer" {
           }
         }
       }
-
-      timeout = "3600s"
     }
   }
 
