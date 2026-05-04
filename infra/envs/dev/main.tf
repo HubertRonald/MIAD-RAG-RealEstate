@@ -181,6 +181,23 @@ resource "google_bigquery_dataset" "rag" {
   labels                     = var.labels
 }
 
+resource "google_bigquery_dataset_iam_member" "dashboard_data_viewer" {
+  for_each = toset(var.bq_dashboard_viewer_members)
+
+  project    = var.project_id
+  dataset_id = google_bigquery_dataset.rag.dataset_id
+  role       = "roles/bigquery.dataViewer"
+  member     = each.value
+}
+
+resource "google_project_iam_member" "dashboard_job_user" {
+  for_each = toset(var.bq_dashboard_viewer_members)
+
+  project = var.project_id
+  role    = "roles/bigquery.jobUser"
+  member  = each.value
+}
+
 resource "google_bigquery_table" "real_estate_listings" {
   project             = var.project_id
   dataset_id          = google_bigquery_dataset.rag.dataset_id
