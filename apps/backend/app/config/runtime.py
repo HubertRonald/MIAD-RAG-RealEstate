@@ -79,6 +79,13 @@ class RuntimeSettings(BaseSettings):
     SCORE_LOW: float = 0.78
     SCORE_HIGH: float = 0.92
 
+    GOOGLE_API_KEY: Optional[str] = None
+    GEMINI_API_KEY: Optional[str] = None
+
+    @property
+    def google_genai_api_key(self) -> Optional[str]:
+        return self.GOOGLE_API_KEY or self.GEMINI_API_KEY
+
     @property
     def cors_origins_list(self) -> list[str]:
         if self.CORS_ALLOW_ORIGINS.strip() == "*":

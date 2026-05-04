@@ -84,6 +84,13 @@ class IndexerSettings(BaseSettings):
     UPLOAD_LATEST: bool = True
     UPLOAD_VERSIONED: bool = True
 
+    GOOGLE_API_KEY: Optional[str] = None
+    GEMINI_API_KEY: Optional[str] = None
+
+    @property
+    def google_genai_api_key(self) -> Optional[str]:
+        return self.GOOGLE_API_KEY or self.GEMINI_API_KEY
+
     @property
     def source_table_fqn(self) -> str:
         return f"{self.BQ_PROJECT_ID}.{self.BQ_DATASET_ID}.{self.BQ_LISTINGS_TABLE}"
