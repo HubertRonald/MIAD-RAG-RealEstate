@@ -49,3 +49,14 @@ async def startup_event() -> None:
 @app.on_event("shutdown")
 async def shutdown_event() -> None:
     logger.info("backend_shutdown", extra={"app": settings.APP_NAME})
+
+@app.get("/")
+def root() -> dict:
+    return {
+        "service": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "status": "ok",
+        "docs": "/docs",
+        "health": "/health",
+        "ready": "/ready",
+    }

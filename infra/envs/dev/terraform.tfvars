@@ -13,6 +13,11 @@ frontend_allowed_members = [
   "user:jmmarin1@gmail.com"
 ]
 
+backend_invoker_members_dev = [
+  "user:hubert.ronald@gmail.com",
+  "user:hrmcanales@gmail.com"
+]
+
 bq_dashboard_viewer_members = [
   "user:hubert.ronald@gmail.com",
   "user:hrmcanales@gmail.com",
