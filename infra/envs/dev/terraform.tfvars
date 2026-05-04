@@ -6,5 +6,17 @@ backend_image  = "us-east4-docker.pkg.dev/miad-paad-rs-dev/miad-rag-repo/miad-ra
 job_image      = "us-east4-docker.pkg.dev/miad-paad-rs-dev/miad-rag-repo/miad-rag-indexer-job:latest"
 
 frontend_allowed_members = [
-  "user:hubert.ronald@gmail.com"
+  "user:hubert.ronald@gmail.com",
+  "user:hrmcanalesd@gmail.com",
+  "user:paulina.luissi@gmail.com",
+  "user:alebarbosac@gmail.com",
+  "user:jmmarin1@gmail.com"
+]
+
+bq_dashboard_viewer_members = [
+  "user:hubert.ronald@gmail.com",
+  "user:hrmcanalesd@gmail.com",
+  "user:paulina.luissi@gmail.com",
+  "user:alebarbosac@gmail.com",
+  "user:jmmarin1@gmail.com"
 ]

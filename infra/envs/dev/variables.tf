@@ -96,6 +96,12 @@ variable "frontend_allowed_members" {
   default     = []
 }
 
+variable "bq_dashboard_viewer_members" {
+  type        = list(string)
+  description = "Users or groups allowed to query the BigQuery dataset from Looker Studio"
+  default     = []
+}
+
 variable "labels" {
   type = map(string)
   default = {
