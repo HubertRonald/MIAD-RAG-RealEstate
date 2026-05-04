@@ -9,6 +9,15 @@ on:
       - ".github/workflows/backend-ci.yml"
 
   workflow_dispatch:
+    inputs:
+      deploy:
+        description: "Build, push and deploy backend to Cloud Run"
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
 
 permissions:
   contents: read
@@ -56,7 +65,7 @@ jobs:
           echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
 
       - name: Create or update backend Cloud Run service
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.deploy == 'true')
         run: |
           if gcloud run services describe "$SERVICE_NAME" \
             --region "${{ vars.GCP_REGION }}" \
