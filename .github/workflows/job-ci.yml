@@ -10,10 +10,23 @@ on:
 
   workflow_dispatch:
     inputs:
+      deploy_job:
+        description: "Build, push and update Cloud Run Job"
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
       execute_job:
-        description: "Execute Cloud Run Job after deploy"
+        description: "Execute Cloud Run Job after deployment"
         required: true
         default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
 
 permissions:
   contents: read
@@ -61,7 +74,7 @@ jobs:
           echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
 
       - name: Create or update Cloud Run Job
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.deploy_job == 'true')
         run: |
           if gcloud run jobs describe "$JOB_NAME" \
             --region "${{ vars.GCP_REGION }}" \
@@ -81,7 +94,7 @@ jobs:
           fi
 
       - name: Execute Cloud Run Job
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.execute_job == 'true'
+        if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.execute_job == 'true'
         run: |
           gcloud run jobs execute "$JOB_NAME" \
             --region "${{ vars.GCP_REGION }}" \
