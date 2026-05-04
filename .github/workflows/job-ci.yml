@@ -67,7 +67,12 @@ jobs:
           IMAGE_BASE="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPO }}/${IMAGE_NAME}"
           IMAGE_URI="${IMAGE_BASE}:${{ github.sha }}"
 
-          docker build -t "$IMAGE_URI" -t "${IMAGE_BASE}:latest" apps/job-indexer
+          docker build \
+            -f apps/job-indexer/Dockerfile \
+            -t "$IMAGE_URI" \
+            -t "${IMAGE_BASE}:latest" \
+            .
+          
           docker push "$IMAGE_URI"
           docker push "${IMAGE_BASE}:latest"
 
