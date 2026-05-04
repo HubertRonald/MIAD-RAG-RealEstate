@@ -409,26 +409,16 @@ class ListingDocumentService:
         )
 
         # --------------------------------------------------------------
-        # 3. Flags desde title/description limpios y crudos.
-        # Usamos ambos para no perder señales de amenities.
+        # 3. Flags desde title_clean / description_clean.
+        # Para embeddings y detección de amenities usamos solo texto limpio.
+        # Los campos crudos quedan en BigQuery para enriquecimiento posterior
+        # del frontend, pero no alimentan el índice FAISS.
         # --------------------------------------------------------------
-        # title_series = (
-        #     df["title"].fillna("").astype(str)
-        #     if "title" in df.columns
-        #     else pd.Series("", index=df.index)
-        # )
-
         title_clean_series = (
             df["title_clean"].fillna("").astype(str)
             if "title_clean" in df.columns
             else pd.Series("", index=df.index)
         )
-
-        # description_series = (
-        #     df["description"].fillna("").astype(str)
-        #     if "description" in df.columns
-        #     else pd.Series("", index=df.index)
-        # )
 
         description_clean_series = (
             df["description_clean"].fillna("").astype(str)
@@ -437,12 +427,8 @@ class ListingDocumentService:
         )
 
         text_col = (
-        #    title_series
-        #    + " "
-            + title_clean_series
+            title_clean_series
             + " "
-        #    + description_series
-        #    + " "
             + description_clean_series
         ).str.lower()
 

@@ -80,7 +80,7 @@ class IndexerSettings(BaseSettings):
     MLFLOW_EXPERIMENT_NAME: str = "miad-rag-realestate-indexer"
 
     # Safety / execution
-    DRY_RUN: bool = False
+    DRY_RUN: bool = True
     UPLOAD_LATEST: bool = True
     UPLOAD_VERSIONED: bool = True
 
