@@ -543,7 +543,7 @@ resource "google_cloud_run_v2_job" "indexer" {
 
         resources {
           limits = {
-            cpu    = "2"
+            cpu    = "4"
             memory = "4Gi"
           }
         }
