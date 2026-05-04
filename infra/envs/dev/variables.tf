@@ -90,6 +90,13 @@ variable "job_image" {
   description = "Artifact Registry image URL for indexer job"
 }
 
+variable "indexer_bq_limit" {
+  type        = number
+  description = "Optional BigQuery LIMIT for indexer runs. Use null for full"
+  default     = 500
+  nullable    = true
+}
+
 variable "frontend_allowed_members" {
   type        = list(string)
   description = "IAM principals allowed to invoke frontend Cloud Run"
