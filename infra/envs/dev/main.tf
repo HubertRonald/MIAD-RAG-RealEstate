@@ -9,7 +9,8 @@ locals {
     "iam.googleapis.com",
     "iamcredentials.googleapis.com",
     "cloudresourcemanager.googleapis.com",
-    "logging.googleapis.com"
+    "logging.googleapis.com",
+    "iap.googleapis.com"
   ]
 }
 
@@ -223,6 +224,7 @@ resource "google_cloud_run_v2_service" "frontend" {
   location            = var.region
   project             = var.project_id
   ingress             = "INGRESS_TRAFFIC_ALL"
+  iap_enabled         = true
   deletion_protection = false
 
   template {
