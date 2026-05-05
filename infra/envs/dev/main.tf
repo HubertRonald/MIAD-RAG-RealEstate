@@ -221,7 +221,7 @@ resource "google_bigquery_table" "rag_eval_results" {
 
 resource "google_cloud_run_v2_service" "frontend" {
   provider = google-beta
-  
+
   name                = var.frontend_service_name
   location            = var.region
   project             = var.project_id
