@@ -25,166 +25,94 @@ st.set_page_config(
 
 CUSTOM_CSS = """
 <style>
-    :root {
-        --brand-orange: #f97316;
-        --brand-orange-soft: #fff3e7;
-        --brand-blue: #2563eb;
-        --ink: #172033;
-        --muted: #64748b;
-        --card: #ffffff;
-        --line: #e5e7eb;
-        --sand: #fffaf3;
-    }
+:root {
+  --app-bg: #f8fbff;
+  --surface: #ffffff;
+  --surface-soft: #f1f7ff;
+  --navy: #172033;
+  --muted: #64748b;
+  --blue: #2563eb;
+  --blue-soft: #dbeafe;
+  --orange: #f97316;
+  --orange-soft: #fff3e7;
+  --border: #dbe4f0;
+}
 
-    .block-container {
-        padding-top: 1.7rem;
-        padding-bottom: 3rem;
-    }
+.stApp {
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 32rem),
+    radial-gradient(circle at top right, rgba(249, 115, 22, 0.07), transparent 28rem),
+    var(--app-bg);
+  color: var(--navy);
+}
 
-    .hero {
-        background: linear-gradient(135deg, #fff7ed 0%, #ffffff 48%, #eff6ff 100%);
-        border: 1px solid var(--line);
-        border-radius: 28px;
-        padding: 2rem 2.2rem;
-        margin-bottom: 1.2rem;
-        box-shadow: 0 18px 45px rgba(15, 23, 42, 0.06);
-    }
+section[data-testid="stSidebar"] {
+  background: #ffffff;
+  border-right: 1px solid var(--border);
+}
 
-    .hero-kicker {
-        color: var(--brand-orange);
-        font-weight: 800;
-        letter-spacing: .08em;
-        text-transform: uppercase;
-        font-size: .78rem;
-        margin-bottom: .35rem;
-    }
+section[data-testid="stSidebar"] * {
+  color: var(--navy);
+}
 
-    .hero h1 {
-        color: var(--ink);
-        font-size: clamp(2rem, 3vw, 3rem);
-        line-height: 1.02;
-        margin: 0 0 .55rem 0;
-    }
+h1, h2, h3 {
+  color: var(--navy);
+  letter-spacing: -0.03em;
+}
 
-    .hero p {
-        color: var(--muted);
-        max-width: 850px;
-        font-size: 1.02rem;
-        margin: 0;
-    }
+div[data-testid="stForm"],
+div[data-testid="stExpander"],
+div[data-testid="stVerticalBlockBorderWrapper"] {
+  border-color: var(--border) !important;
+  border-radius: 18px !important;
+}
 
-    .mode-carousel {
-        background: var(--card);
-        border: 1px solid var(--line);
-        border-radius: 24px;
-        padding: 1.25rem 1.4rem;
-        margin: .6rem 0 .85rem 0;
-        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
-    }
+div[data-testid="stMetric"] {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1rem;
+}
 
-    .mode-eyebrow {
-        color: var(--brand-orange);
-        font-weight: 800;
-        font-size: .75rem;
-        text-transform: uppercase;
-        letter-spacing: .08em;
-    }
+.stButton > button {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+}
 
-    .mode-carousel h3 {
-        margin: .25rem 0 .35rem 0;
-        color: var(--ink);
-    }
+.stButton > button[kind="primary"],
+button[kind="primary"] {
+  background: linear-gradient(135deg, var(--orange), #fb923c);
+  border: 0;
+  color: white;
+}
 
-    .mode-carousel p {
-        margin: 0 0 .75rem 0;
-        color: var(--muted);
-    }
+div[data-baseweb="tag"] {
+  background-color: var(--orange) !important;
+}
 
-    .mode-example {
-        background: var(--brand-orange-soft);
-        border: 1px solid #fed7aa;
-        border-radius: 16px;
-        padding: .75rem .9rem;
-        color: #7c2d12;
-        font-size: .92rem;
-    }
+div[data-testid="stAlert"] {
+  border-radius: 14px;
+}
 
-    .answer-box {
-        background: #ffffff;
-        border-left: 6px solid var(--brand-orange);
-        border-radius: 18px;
-        padding: 1.1rem 1.25rem;
-        box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
-        color: var(--ink);
-        margin-bottom: 1rem;
-    }
+.property-card, .answer-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 5px solid var(--orange);
+  border-radius: 18px;
+  padding: 1.25rem;
+  box-shadow: 0 12px 35px rgba(15, 23, 42, 0.06);
+}
 
-    .card-topline {
-        color: var(--muted);
-        display: flex;
-        align-items: center;
-        gap: .4rem;
-        flex-wrap: wrap;
-        font-size: .88rem;
-        margin-bottom: .2rem;
-    }
-
-    .rank-pill {
-        background: var(--brand-orange);
-        color: white;
-        border-radius: 999px;
-        padding: .15rem .55rem;
-        font-weight: 800;
-    }
-
-    .property-title {
-        margin: .15rem 0 .2rem 0 !important;
-        color: var(--ink);
-        font-size: 1.18rem !important;
-    }
-
-    .price-text {
-        font-size: 1.35rem;
-        font-weight: 800;
-        color: var(--ink);
-        margin-bottom: .65rem;
-    }
-
-    .chip {
-        display: inline-block;
-        background: #eff6ff;
-        color: #1d4ed8;
-        border: 1px solid #bfdbfe;
-        border-radius: 999px;
-        padding: .18rem .55rem;
-        margin: .15rem .2rem .15rem 0;
-        font-size: .78rem;
-        font-weight: 650;
-    }
-
-    .image-placeholder {
-        min-height: 210px;
-        border-radius: 18px;
-        background: linear-gradient(135deg, #e2e8f0, #f8fafc);
-        border: 1px dashed #cbd5e1;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: var(--muted);
-        font-weight: 700;
-    }
-
-    div[data-testid="stMetric"] {
-        background: #f8fafc;
-        border: 1px solid #eef2f7;
-        border-radius: 14px;
-        padding: .55rem .7rem;
-    }
-
-    section[data-testid="stSidebar"] {
-        background: #ffffff;
-        border-right: 1px solid var(--line);
-    }
+.hero-card {
+  background:
+    linear-gradient(135deg, rgba(219, 234, 254, 0.88), rgba(255, 255, 255, 0.95)),
+    linear-gradient(135deg, rgba(249, 115, 22, 0.08), transparent);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 2rem;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+}
 </style>
 """
 
@@ -227,10 +155,12 @@ def render_sidebar(client: BackendClient | None) -> str:
 def render_hero() -> None:
     st.markdown(
         """
-        <div class="hero">
-          <div class="hero-kicker">Montevideo · Recomendador Inmobil-IA-rio</div>
+        <div class="hero-card">
+          <p style="color:#f97316; font-weight:800; letter-spacing:.08em; text-transform:uppercase; font-size:.78rem;">
+            Montevideo · Recomendador Inmobil-IA-rio
+          </p>
           <h1>Encuentra una vivienda que calce con tu vida, no solo con tus filtros.</h1>
-          <p>
+          <p style="color:#475569; font-size:1rem; max-width:850px;">
             Prototipo para probar recomendaciones inmobiliarias con RAG: texto libre,
             filtros estructurados, mapa de propiedades y explicación generada por Gemini.
           </p>
@@ -262,20 +192,21 @@ def run_recommendation_page(client: BackendClient | None) -> None:
 
     if response:
         render_answer_block(response)
-        map_col, table_col = st.columns([1.2, 1], gap="large")
-        with map_col:
-            render_map(response)
-        with table_col:
-            listings_count = len(response.get("listings_used") or [])
-            map_count = len(response.get("map_points") or [])
-            response_time = response.get("response_time_sec", "—")
-            st.markdown("### Indicadores")
-            metric_cols = st.columns(3)
-            metric_cols[0].metric("Propiedades", listings_count)
-            metric_cols[1].metric("Puntos mapa", map_count)
-            metric_cols[2].metric("Tiempo", response_time)
-            if response.get("filters_applied"):
-                st.markdown("#### Filtros aplicados")
+
+        render_map(response)
+
+        listings_count = len(response.get("listings_used") or [])
+        map_count = len(response.get("map_points") or [])
+        response_time = response.get("response_time_sec", "—")
+
+        st.markdown("### Indicadores")
+        metric_cols = st.columns(3)
+        metric_cols[0].metric("Propiedades", listings_count)
+        metric_cols[1].metric("Puntos mapa", map_count)
+        metric_cols[2].metric("Tiempo", response_time)
+
+        if response.get("filters_applied"):
+            with st.expander("Filtros aplicados", expanded=False):
                 st.json(response.get("filters_applied"))
 
         render_property_cards(response.get("listings_used") or [])

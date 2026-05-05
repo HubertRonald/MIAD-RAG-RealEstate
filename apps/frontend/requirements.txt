@@ -6,6 +6,7 @@ streamlit-extras
 
 requests==2.32.3
 google-auth==2.36.0
+numpy==1.26.4
 pandas==2.2.3
 python-dotenv==1.0.1
 pydeck==0.9.1
