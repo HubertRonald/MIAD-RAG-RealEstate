@@ -5,7 +5,11 @@ frontend_image = "us-east4-docker.pkg.dev/miad-paad-rs-dev/miad-rag-repo/miad-ra
 backend_image  = "us-east4-docker.pkg.dev/miad-paad-rs-dev/miad-rag-repo/miad-rag-backend:latest"
 job_image      = "us-east4-docker.pkg.dev/miad-paad-rs-dev/miad-rag-repo/miad-rag-indexer-job:latest"
 
-frontend_allowed_members = [
+# NO público
+frontend_allowed_members = []
+
+# Usuarios autorizados por IAP
+frontend_iap_members = [
   "user:hubert.ronald@gmail.com",
   "user:hrmcanales@gmail.com",
   "user:paulina.luissi@gmail.com",
