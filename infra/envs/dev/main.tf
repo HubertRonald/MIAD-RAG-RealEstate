@@ -266,6 +266,12 @@ resource "google_cloud_run_v2_service" "frontend" {
     }
   }
 
+  lifecycle {
+    ignore_changes = [
+      template[0].containers[0].image
+    ]
+  }
+
   depends_on = [google_project_service.services]
 }
 
@@ -528,6 +534,12 @@ resource "google_cloud_run_v2_service" "backend" {
     }
   }
 
+  lifecycle {
+    ignore_changes = [
+      template[0].containers[0].image
+    ]
+  }
+
   depends_on = [google_project_service.services]
 }
 
@@ -643,6 +655,12 @@ resource "google_cloud_run_v2_job" "indexer" {
         }
       }
     }
+  }
+
+  lifecycle {
+    ignore_changes = [
+      template[0].template[0].containers[0].image
+    ]
   }
 
   depends_on = [google_project_service.services]
