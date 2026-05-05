@@ -1,4 +1,13 @@
-streamlit
-requests
-pandas
-pydeck
+# ---------------------
+# CORE STREAMLIT APP
+# ---------------------
+streamlit==1.40.2
+streamlit-extras
+
+requests==2.32.3
+google-auth==2.36.0
+pandas==2.2.3
+python-dotenv==1.0.1
+pydeck==0.9.1
+
+pyarrow==14.0.2

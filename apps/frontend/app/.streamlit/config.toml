@@ -1,0 +1,26 @@
+[theme]
+base = "light"
+
+# Paleta clara inspirada en el mockup: inmobiliaria, Montevideo, búsqueda de vivienda.
+primaryColor = "#f97316"
+backgroundColor = "#fffaf3"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#172033"
+linkColor = "#2563eb"
+codeBackgroundColor = "#f8fafc"
+
+# Widgets
+showWidgetBorder = true
+borderColor = "#e5e7eb"
+
+# Dataframes
+dataframeHeaderBackgroundColor = "#fff3e7"
+
+# Tipografía
+font = "'Inter':https://fonts.googleapis.com/css2?family=Inter:wght@300..800&display=swap"
+baseFontWeight = 400
+baseFontSize = 15
+
+headingFont = "'Space Grotesk':https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap"
+headingFontWeights = [700, 650, 600, 550, 500, 500]
+headingFontSizes = ["2.6rem", "1.8rem", "1.25rem"]
