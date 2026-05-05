@@ -115,7 +115,8 @@ gcloud services enable \
   secretmanager.googleapis.com \
   storage.googleapis.com \
   bigquery.googleapis.com \
-  logging.googleapis.com
+  logging.googleapis.com \
+  iap.googleapis.com
 ```
 
 ### Crear service account de GitHub Actions
@@ -139,13 +140,29 @@ for ROLE in \
   roles/iam.serviceAccountAdmin \
   roles/iam.serviceAccountUser \
   roles/resourcemanager.projectIamAdmin \
-  roles/serviceusage.serviceUsageAdmin
+  roles/serviceusage.serviceUsageAdmin \
+  roles/iap.admin
 do
   gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${DEPLOYER_SA_EMAIL}" \
     --role="${ROLE}"
 done
 ```
+
+### Permiso adicional para administrar IAP
+
+Si la service account de GitHub Actions ya fue creada anteriormente y solo se está agregando soporte para Identity-Aware Proxy, ejecutar este comando una vez desde Cloud Shell con un usuario que tenga permisos suficientes de IAM:
+
+```bash
+PROJECT_ID="miad-paad-rs-dev"
+DEPLOYER_SA_EMAIL="sa-github-deployer@${PROJECT_ID}.iam.gserviceaccount.com"
+
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+  --member="serviceAccount:${DEPLOYER_SA_EMAIL}" \
+  --role="roles/iap.admin"
+  ```
+
+Este permiso permite que Terraform cree y actualice bindings como roles/iap.httpsResourceAccessor sobre el frontend protegido por IAP.
 
 ### Crear Workload Identity Pool
 
