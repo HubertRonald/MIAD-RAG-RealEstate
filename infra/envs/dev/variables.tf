@@ -103,6 +103,12 @@ variable "frontend_allowed_members" {
   default     = []
 }
 
+variable "frontend_iap_members" {
+  description = "Usuarios, grupos o dominios autorizados para acceder al frontend mediante IAP."
+  type        = list(string)
+  default     = []
+}
+
 variable "backend_invoker_members_dev" {
   type        = list(string)
   description = "Usuarios o service accounts autorizados temporalmente a invocar el backend Cloud Run en dev."
