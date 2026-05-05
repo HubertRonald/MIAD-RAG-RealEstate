@@ -90,7 +90,8 @@ jobs:
             gcloud run services update "$SERVICE_NAME" \
               --image "$IMAGE_URI" \
               --region "${{ vars.GCP_REGION }}" \
-              --project "${{ vars.GCP_PROJECT_ID }}"
+              --project "${{ vars.GCP_PROJECT_ID }}" \
+              --port 8080
           else
             echo "Creating Cloud Run service: $SERVICE_NAME"
             gcloud run deploy "$SERVICE_NAME" \
@@ -99,5 +100,5 @@ jobs:
               --project "${{ vars.GCP_PROJECT_ID }}" \
               --platform managed \
               --no-allow-unauthenticated \
-              --port 8501
+              --port 8080
           fi
