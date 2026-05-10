@@ -565,7 +565,7 @@ def render_recommendation_results(
         response,
         show_title=False,
         height=335,
-        show_points_debug=False,
+        show_points_debug=False, # Puntos usados en el mapa off = False
     )
 
     render_result_availability_notice(response, last_payload)
