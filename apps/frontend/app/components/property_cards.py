@@ -164,11 +164,7 @@ def resolve_listing_image_url(listing: dict[str, Any]) -> str | None:
 
 @st.cache_data(show_spinner=False, ttl=60 * 60 * 24)
 def fetch_image_as_data_uri(image_url: str) -> str | None:
-    """Descarga una imagen remota desde el servidor y la devuelve como data URI.
-
-    Esto evita depender de que el navegador cargue directamente imágenes externas
-    desde dominios como http2.mlstatic.com cuando la app está detrás de Cloud Run/IAP.
-    """
+    """Descarga una imagen remota desde el servidor y la devuelve como data URI."""
     if not image_url:
         return None
 
@@ -235,37 +231,6 @@ def render_listing_image(image_url: str | None, title: str) -> None:
             <img
                 src="{safe_src}"
                 alt="{safe_alt}"
-                loading="lazy"
-            />
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def render_listing_image(image_url: str | None, title: str) -> None:
-    if not image_url:
-        st.markdown(
-            """
-            <div class="image-placeholder">
-                <div class="image-placeholder-icon">🏠</div>
-                <div>Sin imagen</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        return
-
-    safe_url = html.escape(image_url, quote=True)
-    safe_alt = html.escape(title or "Imagen de propiedad", quote=True)
-
-    st.markdown(
-        f"""
-        <div class="listing-image-frame">
-            <img
-                src="{safe_url}"
-                alt="{safe_alt}"
-                referrerpolicy="no-referrer"
                 loading="lazy"
             />
         </div>
