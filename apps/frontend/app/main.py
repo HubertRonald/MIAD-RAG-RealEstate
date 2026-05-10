@@ -580,7 +580,7 @@ def render_recommendation_results(
         render_answer_block(response, title=None)
 
     # Debug técnico desactivado para usuario final.
-    render_debug_panel(last_payload, response)
+    # render_debug_panel(last_payload, response)
 
 
 def render_loading_clean_slate(message: str) -> None:
