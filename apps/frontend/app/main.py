@@ -352,6 +352,35 @@ div[data-testid="stMetric"] {
   text-overflow: clip;
   text-align: center;
 }
+
+.listing-image-frame {
+  width: 100%;
+  min-height: 260px;
+  max-height: 320px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #e7e5dc;
+  border: 1px solid #dbe4f0;
+}
+
+.listing-image-frame img {
+  width: 100%;
+  height: 280px;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+}
+
+@media (max-width: 900px) {
+  .listing-image-frame {
+    min-height: 220px;
+    max-height: 260px;
+  }
+
+  .listing-image-frame img {
+    height: 240px;
+  }
+}
 </style>
 """
 
@@ -551,7 +580,7 @@ def render_recommendation_results(
         render_answer_block(response, title=None)
 
     # Debug técnico desactivado para usuario final.
-    # render_debug_panel(last_payload, response)
+    render_debug_panel(last_payload, response)
 
 
 def render_loading_clean_slate(message: str) -> None:
