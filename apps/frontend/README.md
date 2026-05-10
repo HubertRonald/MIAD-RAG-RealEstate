@@ -246,3 +246,104 @@ export BACKEND_AUTH_TOKEN="$(gcloud auth print-identity-token \
 
 streamlit run app/main.py --server.address=0.0.0.0 --server.port=8080
 ```
+
+---
+
+## Renovación del token de autenticación
+
+Cuando el backend de Cloud Run es privado, el frontend local debe enviar un `identity token` válido en cada petición. Estos tokens son de corta duración y pueden expirar durante una sesión de desarrollo.
+
+Si el frontend muestra un error similar a:
+
+```text
+Backend respondió HTTP 401:
+Your client does not have permission to the requested URL /api/v1/recommend.
+```
+
+renovar el token dentro del devcontainer:
+
+```bash
+cd apps/frontend
+source .venv/bin/activate
+
+export PROJECT_ID="miad-paad-rs-dev"
+export REGION="us-east4"
+export BACKEND_SERVICE="miad-rag-backend"
+export CALLER_SA="streamlit-local-dev@${PROJECT_ID}.iam.gserviceaccount.com"
+
+gcloud config set project "${PROJECT_ID}"
+
+export BACKEND_URL="$(gcloud run services describe "${BACKEND_SERVICE}" \
+  --project="${PROJECT_ID}" \
+  --region="${REGION}" \
+  --format='value(status.url)')"
+
+export BACKEND_AUTH_MODE="auto"
+
+export BACKEND_AUTH_TOKEN="$(gcloud auth print-identity-token \
+  --impersonate-service-account="${CALLER_SA}" \
+  --audiences="${BACKEND_URL}")"
+
+echo "${BACKEND_URL}"
+echo "Token actualizado. Longitud: ${#BACKEND_AUTH_TOKEN}"
+```
+
+Probar conectividad contra el backend:
+
+```bash
+curl -i "${BACKEND_URL}/health" \
+  -H "Authorization: Bearer ${BACKEND_AUTH_TOKEN}"
+```
+
+Si el backend no tiene `/health`, usar el endpoint de salud disponible:
+
+```bash
+curl -i "${BACKEND_URL}/api/v1/health" \
+  -H "Authorization: Bearer ${BACKEND_AUTH_TOKEN}"
+```
+
+Luego reiniciar Streamlit para que tome las variables de entorno actualizadas:
+
+```bash
+streamlit run app/main.py --server.address=0.0.0.0 --server.port=8080
+```
+
+> Nota: si Streamlit ya estaba ejecutándose, detenerlo con `Ctrl + C` y lanzarlo nuevamente. Las variables de entorno exportadas después del inicio del proceso no siempre se reflejan en la aplicación ya levantada.
+
+
+---
+
+## Checklist si sigue el 401
+
+Ejecuta esto:
+
+```bash
+echo "BACKEND_URL=${BACKEND_URL}"
+echo "CALLER_SA=${CALLER_SA}"
+echo "TOKEN_LENGTH=${#BACKEND_AUTH_TOKEN}"
+````
+
+Luego valida que la service account tenga permiso sobre el backend:
+
+```bash
+gcloud run services get-iam-policy "${BACKEND_SERVICE}" \
+  --project="${PROJECT_ID}" \
+  --region="${REGION}" \
+  --format="table(bindings.role, bindings.members)"
+```
+
+Debe aparecer algo como:
+
+```text
+roles/run.invoker    serviceAccount:streamlit-local-dev@miad-paad-rs-dev.iam.gserviceaccount.com
+```
+
+Y recuerda: `BACKEND_URL` debe ser exactamente la URL que retorna:
+
+```bash
+gcloud run services describe "${BACKEND_SERVICE}" \
+  --project="${PROJECT_ID}" \
+  --region="${REGION}" \
+  --format='value(status.url)'
+```
+

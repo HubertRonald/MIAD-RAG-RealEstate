@@ -38,11 +38,20 @@ def _compute_zoom(df: pd.DataFrame) -> float:
     return 10.5
 
 
-def render_map(response: dict[str, Any]) -> None:
+def render_map(
+    response: dict[str, Any],
+    *,
+    show_title: bool = False,
+    height: int = 340,
+    show_points_debug: bool = False,
+) -> None:
     points = derive_map_points(response)
 
     if not points:
-        st.info("No hay puntos de mapa disponibles. El backend no envió `map_points` ni listings con lat/lon.")
+        st.info(
+            "No hay puntos de mapa disponibles. "
+            "El backend no envió `map_points` ni listings con lat/lon."
+        )
         return
 
     df = map_points_to_dataframe(points)
@@ -59,7 +68,8 @@ def render_map(response: dict[str, Any]) -> None:
         st.info("Los puntos recibidos no tienen coordenadas válidas después de normalizarlas.")
         return
 
-    st.markdown("### Mapa de recomendaciones")
+    if show_title:
+        st.markdown("### Mapa de recomendaciones")
 
     center_lat = float(df["lat"].mean()) if "lat" in df else MONTEVIDEO_CENTER["lat"]
     center_lon = float(df["lon"].mean()) if "lon" in df else MONTEVIDEO_CENTER["lon"]
@@ -69,9 +79,9 @@ def render_map(response: dict[str, Any]) -> None:
         "ScatterplotLayer",
         data=df,
         get_position="[lon, lat]",
-        get_radius=90,
-        get_fill_color="[249, 115, 22, 190]",
-        get_line_color="[30, 64, 175, 180]",
+        get_radius=80,
+        get_fill_color="[249, 115, 22, 210]",
+        get_line_color="[37, 99, 235, 190]",
         line_width_min_pixels=1,
         pickable=True,
     )
@@ -106,7 +116,8 @@ def render_map(response: dict[str, Any]) -> None:
         map_style="light",
     )
 
-    st.pydeck_chart(deck, use_container_width=True, height=520)
+    st.pydeck_chart(deck, use_container_width=True, height=height)
 
-    with st.expander("Puntos usados en el mapa", expanded=False):
-        st.dataframe(df, use_container_width=True, hide_index=True)
+    if show_points_debug:
+        with st.expander("Puntos usados en el mapa", expanded=False):
+            st.dataframe(df, use_container_width=True, hide_index=True)
