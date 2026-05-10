@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import base64
 import html
 from urllib.parse import urlparse
 from typing import Any
 
 import pandas as pd
+import requests
 import streamlit as st
 
 from utils.formatting import (
@@ -158,6 +160,87 @@ def resolve_listing_image_url(listing: dict[str, Any]) -> str | None:
             return normalized
 
     return None
+
+
+@st.cache_data(show_spinner=False, ttl=60 * 60 * 24)
+def fetch_image_as_data_uri(image_url: str) -> str | None:
+    """Descarga una imagen remota desde el servidor y la devuelve como data URI.
+
+    Esto evita depender de que el navegador cargue directamente imágenes externas
+    desde dominios como http2.mlstatic.com cuando la app está detrás de Cloud Run/IAP.
+    """
+    if not image_url:
+        return None
+
+    try:
+        response = requests.get(
+            image_url,
+            timeout=8,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/122.0 Safari/537.36"
+                ),
+                "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+            },
+        )
+        response.raise_for_status()
+
+        content_type = response.headers.get("content-type", "").split(";")[0].strip()
+
+        if not content_type.startswith("image/"):
+            return None
+
+        encoded = base64.b64encode(response.content).decode("utf-8")
+        return f"data:{content_type};base64,{encoded}"
+
+    except requests.RequestException:
+        return None
+
+
+def render_listing_image(image_url: str | None, title: str) -> None:
+    if not image_url:
+        st.markdown(
+            """
+            <div class="image-placeholder">
+                <div class="image-placeholder-icon">🏠</div>
+                <div>Sin imagen</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        return
+
+    data_uri = fetch_image_as_data_uri(image_url)
+
+    if not data_uri:
+        st.markdown(
+            """
+            <div class="image-placeholder">
+                <div class="image-placeholder-icon">🏠</div>
+                <div>Imagen no disponible</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        return
+
+    safe_src = html.escape(data_uri, quote=True)
+    safe_alt = html.escape(title or "Imagen de propiedad", quote=True)
+
+    st.markdown(
+        f"""
+        <div class="listing-image-frame">
+            <img
+                src="{safe_src}"
+                alt="{safe_alt}"
+                loading="lazy"
+            />
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def render_listing_image(image_url: str | None, title: str) -> None:
