@@ -328,21 +328,6 @@ def render_ask_form() -> tuple[bool, dict[str, Any]]:
             "No consulta precios en tiempo real ni datos externos."
         )
 
-        with st.expander("Configuración avanzada", expanded=False):
-            collection = st.text_input(
-                "collection",
-                value=COLLECTION_DEFAULT,
-                key="ask_collection",
-            )
-            use_query_rewriting = st.checkbox(
-                "Usar query rewriting",
-                value=True,
-            )
-            use_reranking = st.checkbox(
-                "Usar reranking",
-                value=False,
-            )
-
         submitted = st.form_submit_button(
             "Consultar",
             use_container_width=True,
@@ -351,9 +336,9 @@ def render_ask_form() -> tuple[bool, dict[str, Any]]:
 
     payload = {
         "question": (question or "").strip(),
-        "collection": collection or COLLECTION_DEFAULT,
-        "use_reranking": use_reranking,
-        "use_query_rewriting": use_query_rewriting,
+        "collection": COLLECTION_DEFAULT,
+        "use_reranking": False,
+        "use_query_rewriting": False,
     }
 
     return submitted, payload
