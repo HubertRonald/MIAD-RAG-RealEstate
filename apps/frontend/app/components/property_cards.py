@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import html
+from urllib.parse import urlparse
 from typing import Any
 
 import pandas as pd
@@ -73,6 +75,122 @@ def _is_zeroish(value: Any) -> bool:
         return False
 
 
+INVALID_IMAGE_VALUES = {
+    "",
+    "0",
+    "0.0",
+    "none",
+    "null",
+    "nan",
+    "na",
+    "n/a",
+    "-",
+    "[]",
+    "{}",
+}
+
+
+def normalize_image_url(value: Any) -> str | None:
+    """Normaliza posibles campos de imagen.
+
+    Evita intentar renderizar valores como 0, '0', None, NaN o strings vacíos.
+    También acepta listas/dicts comunes de imágenes.
+    """
+    if _is_missing(value):
+        return None
+
+    if isinstance(value, dict):
+        for key in ("url", "secure_url", "src", "href", "image_url", "thumbnail"):
+            normalized = normalize_image_url(value.get(key))
+            if normalized:
+                return normalized
+        return None
+
+    if isinstance(value, (list, tuple, set)):
+        for item in value:
+            normalized = normalize_image_url(item)
+            if normalized:
+                return normalized
+        return None
+
+    raw = str(value).strip().strip('"').strip("'")
+
+    if raw.lower() in INVALID_IMAGE_VALUES:
+        return None
+
+    if raw.startswith("//"):
+        raw = f"https:{raw}"
+
+    # Evita mixed-content cuando la app corre bajo HTTPS en run.app.
+    if raw.startswith("http://"):
+        raw = f"https://{raw.removeprefix('http://')}"
+
+    parsed = urlparse(raw)
+
+    if parsed.scheme not in {"http", "https"}:
+        return None
+
+    if not parsed.netloc:
+        return None
+
+    return raw
+
+
+def resolve_listing_image_url(listing: dict[str, Any]) -> str | None:
+    """Busca una imagen válida en varios campos posibles del listing."""
+    candidates = [
+        get_listing_image(listing),
+        listing.get("image_url"),
+        listing.get("thumbnail_url"),
+        listing.get("thumbnail"),
+        listing.get("picture_url"),
+        listing.get("cover_image_url"),
+        listing.get("main_image_url"),
+        listing.get("image"),
+        listing.get("images"),
+        listing.get("photos"),
+        listing.get("pictures"),
+    ]
+
+    for candidate in candidates:
+        normalized = normalize_image_url(candidate)
+        if normalized:
+            return normalized
+
+    return None
+
+
+def render_listing_image(image_url: str | None, title: str) -> None:
+    if not image_url:
+        st.markdown(
+            """
+            <div class="image-placeholder">
+                <div class="image-placeholder-icon">🏠</div>
+                <div>Sin imagen</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        return
+
+    safe_url = html.escape(image_url, quote=True)
+    safe_alt = html.escape(title or "Imagen de propiedad", quote=True)
+
+    st.markdown(
+        f"""
+        <div class="listing-image-frame">
+            <img
+                src="{safe_url}"
+                alt="{safe_alt}"
+                referrerpolicy="no-referrer"
+                loading="lazy"
+            />
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def resolve_parking_or_floor_stat(listing: dict[str, Any]) -> tuple[str, str]:
     """Define la cuarta caja de la card.
 
@@ -143,7 +261,7 @@ def render_property_cards(
         rank = listing.get("rank") or idx
         title = get_listing_title(listing)
         barrio = get_listing_barrio(listing)
-        image_url = get_listing_image(listing)
+        image_url = resolve_listing_image_url(listing)
 
         price = format_price(
             listing.get("price_fixed"),
@@ -198,18 +316,7 @@ def render_property_cards(
                     unsafe_allow_html=True,
                 )
 
-                if image_url:
-                    st.image(image_url, use_container_width=True)
-                else:
-                    st.markdown(
-                        """
-                        <div class="image-placeholder">
-                            <div class="image-placeholder-icon">🏠</div>
-                            <div>Sin imagen</div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
+                render_listing_image(image_url, title)
 
             with right_col:
                 st.markdown(

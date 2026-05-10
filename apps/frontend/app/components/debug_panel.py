@@ -4,6 +4,9 @@ from typing import Any
 
 import streamlit as st
 
+from components.property_cards import resolve_listing_image_url
+from utils.formatting import get_listing_image
+
 
 def render_debug_panel(
     payload: dict[str, Any] | None,
@@ -11,6 +14,36 @@ def render_debug_panel(
 ) -> None:
     if not payload and not response:
         return
+
+    if response is not None:
+        listings = response.get("listings_used") or []
+
+        if listings:
+            with st.expander("Debug imágenes", expanded=False):
+                for idx, listing in enumerate(listings, start=1):
+                    rank = listing.get("rank") or idx
+                    resolved_image_url = resolve_listing_image_url(listing)
+
+                    st.markdown(f"#### Imagen propiedad #{rank}")
+                    st.write("resolved_image_url:", resolved_image_url)
+
+                    st.json(
+                        {
+                            "get_listing_image": get_listing_image(listing),
+                            "image_url": listing.get("image_url"),
+                            "thumbnail_url": listing.get("thumbnail_url"),
+                            "picture_url": listing.get("picture_url"),
+                            "cover_image_url": listing.get("cover_image_url"),
+                            "main_image_url": listing.get("main_image_url"),
+                            "image": listing.get("image"),
+                            "images": listing.get("images"),
+                            "photos": listing.get("photos"),
+                            "pictures": listing.get("pictures"),
+                        }
+                    )
+
+                    if idx < len(listings):
+                        st.divider()
 
     with st.expander("Debug técnico", expanded=False):
         if payload is not None:
