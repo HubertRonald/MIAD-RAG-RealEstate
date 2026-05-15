@@ -166,7 +166,7 @@ Este diagrama de secuencia describe el flujo de ejecución del sistema de recome
 > La convención de nombres sigue un patrón consistente basado en {organización}-{curso}-{dominio}-{entorno}, facilitando la trazabilidad, escalabilidad y gobierno de los recursos en GCP.
 
 ## Google Cloud Platform - GCP
-Este repositorio se complementa con [GoogleCloudPlatformCLI](https://github.com/HubertRonald/GoogleCloudPlatformCLI), para lanzar desde un devcontainer local la instancia que nos permitirá aprovicionar la IaC y desarrollos de la solución analítica.
+Este repositorio se complementa con [GoogleCloudPlatformCLI](https://github.com/HubertRonald/GoogleCloudPlatformCLI), para lanzar desde un devcontainer local la instancia que nos permitirá hacer los desarrollos del frontend para conectarse al backend mediante una service account impersonal [Frontend Streamlit - MIAD RAG Real Estate](./apps/frontend/README.md).
 
 ## .gitignore
 
