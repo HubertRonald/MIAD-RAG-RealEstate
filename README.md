@@ -83,7 +83,7 @@
 
 ## Integrantes
 
-A. Barbosa, M. Marin, P. Luissi, R. Mendoza
+Barbosa A., Marin M., Luissi P., Mendoza R. 
 
 ## Resumen
 
