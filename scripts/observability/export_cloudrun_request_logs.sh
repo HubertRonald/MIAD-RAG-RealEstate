@@ -16,7 +16,6 @@ START_TS="$(TZ="${LOCAL_TZ}" date -d "${START_LOCAL}" -u +"%Y-%m-%dT%H:%M:%SZ")"
 END_TS="$(TZ="${LOCAL_TZ}" date -d "${END_LOCAL_EXCLUSIVE}" -u +"%Y-%m-%dT%H:%M:%SZ")"
 
 # Debe cubrir al menos la antigüedad de la ventana consultada.
-# Si se ejecuta pocos días después, 30d es suficiente para logs retenidos en _Default.
 FRESHNESS="${FRESHNESS:-30d}"
 
 LIMIT="${LIMIT:-50000}"
