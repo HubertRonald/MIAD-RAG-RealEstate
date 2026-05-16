@@ -2,7 +2,7 @@
 
 ## MIAD RAG Real Estate — Ventana 11 a 13 de mayo de 2026
 
-Este documento describe cómo medir los tiempos disponibles **después de cerradas las pruebas con usuarios**, usando únicamente la evidencia que ya quedó registrada en Cloud Logging / Cloud Run.
+Este documento describe cómo medir los tiempos disponibles **después de cerradas las pruebas con usuarios**, usando únicamente la evidencia que ya quedó registrada en **Cloud Logging / Cloud Run**.
 
 La medición solicitada corresponde a:
 
@@ -69,7 +69,7 @@ scripts/
 
 ### 2.2 Archivos que no sirven para la medición histórica si no hubo instrumentación
 
-Estos archivos **no devolverán datos útiles** ya que en las pruebas no se emitieron logs JSON con `event_type = "rag_timing"` o `event_type = "frontend_session_event"`:
+Estos archivos **no devolverán datos útiles** para la ventana histórica si en las pruebas no se emitieron logs JSON con `event_type = "rag_timing"` o `event_type = "frontend_session_event"`:
 
 ```text
 queries/
@@ -83,7 +83,30 @@ Estos archivos pueden conservarse solo como propuesta futura, pero **no debería
 
 ---
 
-## 3. Estructura recomendada en el repo
+## 3. Ubicaciones correctas: Cloud Run, Log Bucket y BigQuery
+
+Este punto es clave para evitar errores de ubicación y costos innecesarios.
+
+| Elemento | Valor correcto en este caso | Comentario |
+|---|---|---|
+| Región Cloud Run | `us-east4` | Se usa para filtrar los logs del servicio. |
+| Log bucket `_Default` | `global` | Confirmado con `gcloud logging buckets list`. |
+| Linked dataset | `logging_miad_rag` | Debe crearse contra el bucket `_Default` en `global`. |
+| BigQuery job location para `bq query` | `US` | No usar `global`. No usar `us-east4` para este linked dataset. |
+
+Resumen práctico:
+
+```text
+Cloud Run region      = us-east4
+Log bucket location   = global
+BigQuery job location = US
+```
+
+> Aunque Cloud Run esté desplegado en `us-east4`, el bucket de logs `_Default` está en `global`. Por tanto, el linked dataset se crea sobre `location=global` y las consultas BigQuery se ejecutan con `BQ_LOCATION=US`. No usar `BQ_LOCATION=us-east4` para este linked dataset.
+
+---
+
+## 4. Estructura recomendada en el repo
 
 Para la medición histórica, dejaría la estructura así:
 
@@ -116,13 +139,106 @@ No subir al repo los CSV o JSON exportados, porque pueden contener IP, user agen
 
 ---
 
-## 4. Script para exportar request logs nativos de Cloud Run
+## 5. Validar bucket de logs y linked dataset
+
+### 5.1 Verificar ubicación del bucket de logs
+
+```bash
+PROJECT_ID="miad-paad-rs-dev"
+
+gcloud logging buckets list \
+  --project="${PROJECT_ID}"
+```
+
+Salida esperada para este caso:
+
+```text
+LOCATION: global
+BUCKET_ID: _Default
+RETENTION_DAYS: 30
+LIFECYCLE_STATE: ACTIVE
+```
+
+### 5.2 Verificar si ya existe un linked dataset
+
+```bash
+PROJECT_ID="miad-paad-rs-dev"
+
+gcloud logging links list \
+  --project="${PROJECT_ID}" \
+  --bucket="_Default" \
+  --location="global"
+```
+
+Si devuelve:
+
+```text
+Listed 0 items.
+```
+
+entonces todavía **no existe** el linked dataset y `bq query` fallará con un error similar a:
+
+```text
+Not found: Dataset miad-paad-rs-dev:logging_miad_rag was not found in location US
+```
+
+---
+
+## 6. Crear el linked dataset para consultar con BigQuery
+
+Este paso solo es necesario si se quiere consultar desde BigQuery CLI (`bq query`) o exportar resultados a CSV usando el script `run_log_query_to_csv.sh`.
+
+### 6.1 Habilitar Analytics en el bucket `_Default`
+
+Si el bucket aún no está habilitado para Analytics:
+
+```bash
+PROJECT_ID="miad-paad-rs-dev"
+
+gcloud logging buckets update "_Default" \
+  --project="${PROJECT_ID}" \
+  --location="global" \
+  --enable-analytics
+```
+
+### 6.2 Crear el linked dataset
+
+```bash
+PROJECT_ID="miad-paad-rs-dev"
+LINKED_DATASET="logging_miad_rag"
+
+gcloud logging links create "${LINKED_DATASET}" \
+  --project="${PROJECT_ID}" \
+  --bucket="_Default" \
+  --location="global"
+```
+
+### 6.3 Validar que el link quedó creado
+
+```bash
+PROJECT_ID="miad-paad-rs-dev"
+
+gcloud logging links list \
+  --project="${PROJECT_ID}" \
+  --bucket="_Default" \
+  --location="global"
+```
+
+Debería aparecer un link asociado a `logging_miad_rag`.
+
+---
+
+## 7. Script para exportar request logs nativos de Cloud Run
+
+Este script **no depende de BigQuery ni del linked dataset**. Usa `gcloud logging read` directamente contra Cloud Logging.
 
 Archivo:
 
 ```text
 scripts/observability/export_cloudrun_request_logs.sh
 ```
+
+> Importante: se dejan los timestamps UTC fijos para evitar errores de conversión con `date`. Para Colombia, el rango correcto es `2026-05-11T05:00:00Z` a `2026-05-14T05:00:00Z` exclusivo.
 
 ```bash
 #!/usr/bin/env bash
@@ -133,18 +249,12 @@ REGION="${REGION:-us-east4}"
 FRONTEND_SERVICE="${FRONTEND_SERVICE:-miad-rag-frontend}"
 BACKEND_SERVICE="${BACKEND_SERVICE:-miad-rag-backend}"
 
-# Ventana solicitada en hora Colombia.
-LOCAL_TZ="${LOCAL_TZ:-America/Bogota}"
-START_LOCAL="${START_LOCAL:-2026-05-11 00:00:00}"
-END_LOCAL_EXCLUSIVE="${END_LOCAL_EXCLUSIVE:-2026-05-14 00:00:00}"
-
-# Cloud Logging consulta en UTC.
-START_TS="$(TZ="${LOCAL_TZ}" date -d "${START_LOCAL}" -u +"%Y-%m-%dT%H:%M:%SZ")"
-END_TS="$(TZ="${LOCAL_TZ}" date -d "${END_LOCAL_EXCLUSIVE}" -u +"%Y-%m-%dT%H:%M:%SZ")"
+# Ventana histórica solicitada, convertida manualmente de America/Bogota a UTC.
+START_TS="${START_TS:-2026-05-11T05:00:00Z}"
+END_TS="${END_TS:-2026-05-14T05:00:00Z}"
 
 # Debe cubrir al menos la antigüedad de la ventana consultada.
 FRESHNESS="${FRESHNESS:-30d}"
-
 LIMIT="${LIMIT:-50000}"
 OUT_DIR="${OUT_DIR:-./observability_exports}"
 
@@ -166,14 +276,11 @@ timestamp < "${END_TS}"
 EOF
 )
 
-echo "Project    : ${PROJECT_ID}"
-echo "Region     : ${REGION}"
-echo "Local TZ   : ${LOCAL_TZ}"
-echo "Start local: ${START_LOCAL}"
-echo "End local  : 2026-05-13 23:59:59"
-echo "Start UTC  : ${START_TS}"
-echo "End UTC    : ${END_TS} exclusive"
-echo "Output     : ${OUT_DIR}"
+echo "Project   : ${PROJECT_ID}"
+echo "Region    : ${REGION}"
+echo "Start UTC : ${START_TS}"
+echo "End UTC   : ${END_TS} exclusive"
+echo "Output    : ${OUT_DIR}"
 
 gcloud logging read "${FILTER}" \
   --project="${PROJECT_ID}" \
@@ -189,7 +296,7 @@ def latency_to_ms:
   else
     (capture("(?<seconds>[0-9]+)(\\.(?<fraction>[0-9]+))?s")? // null) as $m
     | if $m == null then null
-      else ((($m.seconds | tonumber) + (("0." + ($m.fraction // "0")) | tonumber)) * 1000)
+      else ((( $m.seconds | tonumber) + (("0." + ($m.fraction // "0")) | tonumber)) * 1000)
       end
   end;
 
@@ -232,16 +339,15 @@ chmod +x scripts/observability/export_cloudrun_request_logs.sh
 
 PROJECT_ID="miad-paad-rs-dev" \
 REGION="us-east4" \
-LOCAL_TZ="America/Bogota" \
-START_LOCAL="2026-05-11 00:00:00" \
-END_LOCAL_EXCLUSIVE="2026-05-14 00:00:00" \
+START_TS="2026-05-11T05:00:00Z" \
+END_TS="2026-05-14T05:00:00Z" \
 FRESHNESS="30d" \
 scripts/observability/export_cloudrun_request_logs.sh
 ```
 
 ---
 
-## 5. Script para ejecutar queries SQL y exportar CSV
+## 8. Script para ejecutar queries SQL y exportar CSV
 
 Este script aplica cuando ya existe un **linked dataset** de Log Analytics hacia BigQuery.
 
@@ -251,12 +357,20 @@ Archivo:
 scripts/observability/run_log_query_to_csv.sh
 ```
 
+Características de esta versión:
+
+- usa `BQ_LOCATION="US"` por defecto;
+- no guarda errores como si fueran CSV válidos;
+- guarda errores en `.err` solo cuando falla;
+- reemplaza automáticamente la referencia de Observability Analytics por la del linked dataset.
+
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 
 PROJECT_ID="${PROJECT_ID:-miad-paad-rs-dev}"
 LINKED_DATASET="${LINKED_DATASET:-logging_miad_rag}"
+BQ_LOCATION="${BQ_LOCATION:-US}"
 SQL_FILE="${1:?Uso: $0 queries/observability/archivo.sql}"
 OUT_DIR="${OUT_DIR:-./observability_exports}"
 
@@ -266,33 +380,93 @@ BASENAME="$(basename "${SQL_FILE}" .sql)"
 STAMP="$(date -u +"%Y%m%dT%H%M%SZ")"
 TMP_SQL="${OUT_DIR}/${BASENAME}_${STAMP}.bq.sql"
 OUT_CSV="${OUT_DIR}/${BASENAME}_${STAMP}.csv"
+TMP_CSV="${OUT_CSV}.tmp"
+ERR_FILE="${OUT_CSV}.err"
 
 sed "s|miad-paad-rs-dev.global._Default._AllLogs|${PROJECT_ID}.${LINKED_DATASET}._AllLogs|g" \
   "${SQL_FILE}" > "${TMP_SQL}"
 
-bq query \
+echo "Project        : ${PROJECT_ID}"
+echo "Linked dataset : ${LINKED_DATASET}"
+echo "BQ location    : ${BQ_LOCATION}"
+echo "SQL file       : ${SQL_FILE}"
+echo "SQL usado      : ${TMP_SQL}"
+
+if bq query \
   --project_id="${PROJECT_ID}" \
+  --location="${BQ_LOCATION}" \
   --use_legacy_sql=false \
   --format=csv \
-  < "${TMP_SQL}" > "${OUT_CSV}"
+  < "${TMP_SQL}" > "${TMP_CSV}" 2> "${ERR_FILE}"; then
 
-echo "SQL usado : ${TMP_SQL}"
-echo "CSV      : ${OUT_CSV}"
+  mv "${TMP_CSV}" "${OUT_CSV}"
+  rm -f "${ERR_FILE}"
+  echo "CSV generado   : ${OUT_CSV}"
+
+else
+  echo "ERROR ejecutando query."
+  echo
+  echo "STDERR:"
+  cat "${ERR_FILE}" || true
+
+  rm -f "${TMP_CSV}"
+  exit 1
+fi
 ```
 
-Ejecución:
+Ejecución de una query:
 
 ```bash
 chmod +x scripts/observability/run_log_query_to_csv.sh
 
 PROJECT_ID="miad-paad-rs-dev" \
 LINKED_DATASET="logging_miad_rag" \
+BQ_LOCATION="US" \
 scripts/observability/run_log_query_to_csv.sh queries/observability/cloudrun_latency_by_endpoint.sql
 ```
 
 ---
 
-# 6. Queries SQL históricas
+## 9. Ejecutar las cuatro queries históricas
+
+El script `run_log_query_to_csv.sh` ejecuta **una query por vez**. Para ejecutar todas:
+
+```bash
+PROJECT_ID="miad-paad-rs-dev"
+LINKED_DATASET="logging_miad_rag"
+BQ_LOCATION="US"
+
+for SQL_FILE in \
+  queries/observability/cloudrun_request_detail.sql \
+  queries/observability/cloudrun_latency_by_endpoint.sql \
+  queries/observability/cloudrun_latency_timeseries.sql \
+  queries/observability/cloudrun_backend_app_logs_inventory.sql
+do
+  PROJECT_ID="${PROJECT_ID}" \
+  LINKED_DATASET="${LINKED_DATASET}" \
+  BQ_LOCATION="${BQ_LOCATION}" \
+  scripts/observability/run_log_query_to_csv.sh "${SQL_FILE}"
+done
+```
+
+> No usar `BQ_LOCATION="global"`. BigQuery no ejecuta jobs en `global`. Para este linked dataset asociado al bucket global, usar `BQ_LOCATION="US"`.
+
+---
+
+## 10. Limpieza de CSV fallidos
+
+Si antes se generó un CSV que realmente contiene el error de BigQuery, eliminarlo:
+
+```bash
+rm -f observability_exports/cloudrun_latency_by_endpoint_20260516T032543Z.csv
+rm -f observability_exports/cloudrun_latency_by_endpoint_20260516T032543Z.bq.sql
+```
+
+Con el nuevo script, los errores ya no deberían quedar guardados como CSV válidos.
+
+---
+
+# 11. Queries SQL históricas
 
 Todas las queries están fijadas a:
 
@@ -317,7 +491,7 @@ El script `run_log_query_to_csv.sh` reemplaza automáticamente la primera refere
 
 ---
 
-## 6.1 Detalle request por request
+## 11.1 Detalle request por request
 
 Archivo:
 
@@ -359,7 +533,7 @@ ORDER BY
 
 ---
 
-## 6.2 Latencia agregada por servicio y endpoint
+## 11.2 Latencia agregada por servicio y endpoint
 
 Archivo:
 
@@ -415,7 +589,7 @@ ORDER BY
 
 ---
 
-## 6.3 Serie temporal de latencias por minuto
+## 11.3 Serie temporal de latencias por minuto
 
 Archivo:
 
@@ -464,7 +638,7 @@ ORDER BY
 
 ---
 
-## 6.4 Inventario exploratorio de logs de aplicación backend
+## 11.4 Inventario exploratorio de logs de aplicación backend
 
 Esta query no mide latencias internas por sí sola, pero ayuda a revisar si durante las pruebas quedaron logs propios del backend mencionando `bigquery`, `gemini`, `faiss`, `gcs`, `retrieval`, `generation`, `recommend` o errores asociados.
 
@@ -516,9 +690,9 @@ ORDER BY
 
 ---
 
-# 7. Cómo interpretar lo que sí se obtiene
+# 12. Cómo interpretar lo que sí se obtiene
 
-## 7.1 Con `cloudrun_latency_by_endpoint.sql`
+## 12.1 Con `cloudrun_latency_by_endpoint.sql`
 
 Resultado esperado:
 
@@ -534,7 +708,7 @@ Resultado esperado:
 | `p95_ms` | Experiencia lenta |
 | `p99_ms` | Casos extremos |
 
-## 7.2 Con `cloudrun_request_detail.sql`
+## 12.2 Con `cloudrun_request_detail.sql`
 
 Permite revisar request por request:
 
@@ -549,7 +723,7 @@ Permite revisar request por request:
 
 Sirve para seleccionar casos extremos y revisar si se concentran en una hora, endpoint, revisión o usuario/IP.
 
-## 7.3 Con `cloudrun_latency_timeseries.sql`
+## 12.3 Con `cloudrun_latency_timeseries.sql`
 
 Permite ver comportamiento por minuto:
 
@@ -558,7 +732,7 @@ Permite ver comportamiento por minuto:
 - errores por minuto;
 - diferencias frontend/backend.
 
-## 7.4 Con `cloudrun_backend_app_logs_inventory.sql`
+## 12.4 Con `cloudrun_backend_app_logs_inventory.sql`
 
 Permite revisar si quedó evidencia textual adicional de ejecución interna.
 
@@ -566,7 +740,40 @@ Si no hay logs con duraciones internas, esta query no permite inferir tiempos ex
 
 ---
 
-# 8. Limitaciones para el informe
+# 13. Relación con el KPI de eficiencia del proceso de búsqueda
+
+KPI declarado:
+
+```text
+Eficiencia del proceso de búsqueda <= 3 minutos en demo reportado por usuario
+```
+
+Con estos logs históricos se puede medir:
+
+```text
+Tiempo técnico de respuesta del frontend/backend Cloud Run
+Tiempo técnico de respuesta de /api/v1/recommend y /api/v1/ask, si aparecen en logs
+Percentiles p50, p95 y p99 de latencia técnica
+Errores HTTP durante la ventana de pruebas
+```
+
+Pero no se puede reconstruir completamente:
+
+```text
+Tiempo humano de lectura de interfaz
+Tiempo de parametrización de filtros
+Tiempo de escritura de preferencias
+Tiempo de revisión de resultados
+Tiempo total real de permanencia por sesión
+```
+
+Texto sugerido:
+
+> El indicador de eficiencia del proceso de búsqueda menor o igual a 3 minutos se valida principalmente con evidencia observacional o reporte de usuario durante la demo. Los logs históricos de Cloud Run permiten complementar esta validación midiendo la latencia técnica de respuesta del frontend y backend durante la ventana de pruebas. Sin embargo, al no existir instrumentación de eventos de sesión en frontend durante la demo, los logs no permiten reconstruir de forma exacta el tiempo total humano desde el inicio de la parametrización hasta la revisión del resultado.
+
+---
+
+# 14. Limitaciones para el informe
 
 Texto sugerido para el informe:
 
@@ -574,12 +781,14 @@ Texto sugerido para el informe:
 
 ---
 
-# 9. Checklist mínimo para la medición histórica
+# 15. Checklist mínimo para la medición histórica
 
 - [ ] Verificar que los logs del 11 al 13 de mayo de 2026 aún estén retenidos.
-- [ ] Ejecutar `export_cloudrun_request_logs.sh`.
+- [ ] Confirmar que el bucket `_Default` está en `global`.
+- [ ] Ejecutar `export_cloudrun_request_logs.sh` con `START_TS="2026-05-11T05:00:00Z"` y `END_TS="2026-05-14T05:00:00Z"`.
 - [ ] Revisar si el CSV trae registros de `miad-rag-frontend` y `miad-rag-backend`.
-- [ ] Si hay Observability Analytics, correr `cloudrun_latency_by_endpoint.sql`.
+- [ ] Si se requiere `bq query`, validar o crear el linked dataset `logging_miad_rag`.
+- [ ] Ejecutar `bq query` con `BQ_LOCATION="US"`.
 - [ ] Exportar `cloudrun_request_detail.csv`.
 - [ ] Exportar `cloudrun_latency_by_endpoint.csv`.
 - [ ] Exportar `cloudrun_latency_timeseries.csv`.
@@ -589,36 +798,75 @@ Texto sugerido para el informe:
 
 ---
 
-# 10. Recomendación práctica
+# 16. Orden recomendado de ejecución
 
-Actualmente usar solo:
+Primero, extraer logs nativos sin BigQuery:
 
-```text
-cloudrun_request_detail.sql
-cloudrun_latency_by_endpoint.sql
-cloudrun_latency_timeseries.sql
-cloudrun_backend_app_logs_inventory.sql
-export_cloudrun_request_logs.sh
-run_log_query_to_csv.sh
+```bash
+PROJECT_ID="miad-paad-rs-dev" \
+REGION="us-east4" \
+START_TS="2026-05-11T05:00:00Z" \
+END_TS="2026-05-14T05:00:00Z" \
+FRESHNESS="30d" \
+scripts/observability/export_cloudrun_request_logs.sh
 ```
 
-No usar como evidencia histórica:
+Luego, validar el linked dataset:
 
-```text
-rag_timeline_detail.sql
-rag_timeline_building_blocks.sql
-frontend_session_duration.sql
+```bash
+PROJECT_ID="miad-paad-rs-dev"
+
+gcloud logging links list \
+  --project="${PROJECT_ID}" \
+  --bucket="_Default" \
+  --location="global"
 ```
 
-Estos últimos solo tendrían sentido si el frontend/backend emiten logs estructurados durante las pruebas.
+Si no existe, crearlo:
+
+```bash
+PROJECT_ID="miad-paad-rs-dev"
+LINKED_DATASET="logging_miad_rag"
+
+gcloud logging buckets update "_Default" \
+  --project="${PROJECT_ID}" \
+  --location="global" \
+  --enable-analytics
+
+gcloud logging links create "${LINKED_DATASET}" \
+  --project="${PROJECT_ID}" \
+  --bucket="_Default" \
+  --location="global"
+```
+
+Finalmente, ejecutar las queries SQL:
+
+```bash
+PROJECT_ID="miad-paad-rs-dev"
+LINKED_DATASET="logging_miad_rag"
+BQ_LOCATION="US"
+
+for SQL_FILE in \
+  queries/observability/cloudrun_request_detail.sql \
+  queries/observability/cloudrun_latency_by_endpoint.sql \
+  queries/observability/cloudrun_latency_timeseries.sql \
+  queries/observability/cloudrun_backend_app_logs_inventory.sql
+do
+  PROJECT_ID="${PROJECT_ID}" \
+  LINKED_DATASET="${LINKED_DATASET}" \
+  BQ_LOCATION="${BQ_LOCATION}" \
+  scripts/observability/run_log_query_to_csv.sh "${SQL_FILE}"
+done
+```
+
 
 ---
 
-# 11. Instrumentación sugerida en backend
+# 17. Instrumentación sugerida en backend
 
 Futura implementación
 
-## 11.1 Helper de timing
+## 17.1 Helper de timing
 
 Archivo sugerido:
 
@@ -695,7 +943,7 @@ def timed_stage(
         )
 ```
 
-## 11.2 Uso conceptual en endpoint `/api/v1/recommend`
+## 17.2 Uso conceptual en endpoint `/api/v1/recommend`
 
 ```python
 import uuid
@@ -749,9 +997,9 @@ with timed_stage(
 
 ---
 
-# 12. Instrumentación sugerida en frontend
+# 18. Instrumentación sugerida en frontend
 
-## 12.1 Generar sesión y request id
+## 18.1 Generar sesión y request id
 
 ```python
 import hashlib
@@ -806,7 +1054,7 @@ def log_frontend_timing(
     logger.info(payload)
 ```
 
-## 12.2 Medir llamada frontend → backend
+## 18.2 Medir llamada frontend → backend
 
 ```python
 request_id = str(uuid.uuid4())
@@ -846,4 +1094,41 @@ log_frontend_event("backend_response_received", request_id=request_id)
 
 # Luego de renderizar resultado:
 log_frontend_event("response_rendered", request_id=request_id)
+```
+
+
+---
+
+# 19. Recomendación práctica final
+
+Actualmente usar solo:
+
+```text
+cloudrun_request_detail.sql
+cloudrun_latency_by_endpoint.sql
+cloudrun_latency_timeseries.sql
+cloudrun_backend_app_logs_inventory.sql
+export_cloudrun_request_logs.sh
+run_log_query_to_csv.sh
+```
+
+No usar como evidencia histórica:
+
+```text
+rag_timeline_detail.sql
+rag_timeline_building_blocks.sql
+frontend_session_duration.sql
+```
+
+Estos últimos solo tendrían sentido si el frontend/backend emitieran logs estructurados durante las pruebas.
+
+Resumen operativo:
+
+```text
+Filtrar Cloud Run por region=us-east4.
+Consultar Cloud Logging bucket en location=global.
+Crear linked dataset contra bucket _Default en global.
+Ejecutar BigQuery con BQ_LOCATION=US.
+No usar BQ_LOCATION=us-east4 para el linked dataset de logs global.
+Usar timestamps UTC fijos: 2026-05-11T05:00:00Z a 2026-05-14T05:00:00Z.
 ```
