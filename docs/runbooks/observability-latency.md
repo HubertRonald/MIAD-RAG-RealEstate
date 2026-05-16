@@ -15,7 +15,32 @@ El objetivo es separar la medición en dos niveles:
 
 ---
 
-## 1. Arquitectura observada
+## 1. Ventana de medición solicitada
+
+La medición debe tomar como rango principal:
+
+| Zona horaria | Inicio inclusivo | Fin inclusivo |
+|---|---:|---:|
+| America/Bogota | `2026-05-11 00:00:00` | `2026-05-13 23:59:59` |
+
+Como Cloud Logging y BigQuery trabajan normalmente con timestamps UTC, el rango equivalente recomendado para consultas es:
+
+| Zona horaria | Inicio inclusivo | Fin exclusivo recomendado |
+|---|---:|---:|
+| UTC | `2026-05-11T05:00:00Z` | `2026-05-14T05:00:00Z` |
+
+Se usa **fin exclusivo** para evitar problemas de precisión con milisegundos, microsegundos o nanosegundos:
+
+```sql
+timestamp >= TIMESTAMP("2026-05-11T05:00:00Z")
+AND timestamp < TIMESTAMP("2026-05-14T05:00:00Z")
+```
+
+Esto captura todo lo ocurrido desde el lunes 11 de mayo de 2026 a las 00:00:00 en Colombia hasta el miércoles 13 de mayo de 2026 a las 23:59:59 en Colombia.
+
+---
+
+## 2. Arquitectura observada
 
 Flujo funcional del recomendador:
 
@@ -58,7 +83,7 @@ Servicios principales en ambiente dev:
 
 ---
 
-## 2. Qué se puede medir sin modificar código
+## 3. Qué se puede medir sin modificar código
 
 Con los request logs nativos de Cloud Run se puede medir:
 
@@ -78,7 +103,7 @@ Limitación importante:
 
 ---
 
-## 3. Qué requiere instrumentación adicional
+## 4. Qué requiere instrumentación adicional
 
 Para obtener un timeline real por solicitud se deben emitir logs JSON desde frontend y backend.
 
@@ -127,7 +152,7 @@ Para eventos de sesión en frontend:
 
 ---
 
-## 4. Privacidad y trazabilidad
+## 5. Privacidad y trazabilidad
 
 Para análisis por sesión o usuario se recomienda:
 
@@ -155,7 +180,7 @@ session_id_hash = hashlib.sha256(
 
 ---
 
-## 5. Estructura sugerida en el repo
+## 6. Estructura sugerida en el repo
 
 ```text
 MIAD-RAG-RealEstate/
@@ -186,7 +211,7 @@ observability_exports/
 
 ---
 
-## 6. Script 1 — Exportar request logs nativos de Cloud Run
+## 7. Script 1 — Exportar request logs nativos de Cloud Run
 
 Archivo sugerido:
 
@@ -202,17 +227,30 @@ PROJECT_ID="${PROJECT_ID:-miad-paad-rs-dev}"
 REGION="${REGION:-us-east4}"
 FRONTEND_SERVICE="${FRONTEND_SERVICE:-miad-rag-frontend}"
 BACKEND_SERVICE="${BACKEND_SERVICE:-miad-rag-backend}"
-SINCE_HOURS="${SINCE_HOURS:-24}"
-LIMIT="${LIMIT:-20000}"
+
+# Ventana solicitada en hora Colombia.
+LOCAL_TZ="${LOCAL_TZ:-America/Bogota}"
+START_LOCAL="${START_LOCAL:-2026-05-11 00:00:00}"
+END_LOCAL_EXCLUSIVE="${END_LOCAL_EXCLUSIVE:-2026-05-14 00:00:00}"
+
+# Cloud Logging consulta en UTC.
+START_TS="$(TZ="${LOCAL_TZ}" date -d "${START_LOCAL}" -u +"%Y-%m-%dT%H:%M:%SZ")"
+END_TS="$(TZ="${LOCAL_TZ}" date -d "${END_LOCAL_EXCLUSIVE}" -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+# Debe cubrir al menos la antigüedad de la ventana consultada.
+# Si se ejecuta pocos días después, 30d es suficiente para logs retenidos en _Default.
+FRESHNESS="${FRESHNESS:-30d}"
+
+LIMIT="${LIMIT:-50000}"
 OUT_DIR="${OUT_DIR:-./observability_exports}"
 
 mkdir -p "${OUT_DIR}"
 
-START_TS="$(date -u -d "${SINCE_HOURS} hours ago" +"%Y-%m-%dT%H:%M:%SZ")"
 STAMP="$(date -u +"%Y%m%dT%H%M%SZ")"
+RANGE_LABEL="20260511_000000_to_20260513_235959_COT"
 
-RAW_JSON="${OUT_DIR}/cloudrun_requests_${STAMP}.json"
-CSV="${OUT_DIR}/cloudrun_requests_${STAMP}.csv"
+RAW_JSON="${OUT_DIR}/cloudrun_requests_${RANGE_LABEL}_${STAMP}.json"
+CSV="${OUT_DIR}/cloudrun_requests_${RANGE_LABEL}_${STAMP}.csv"
 
 FILTER=$(cat <<EOF
 resource.type="cloud_run_revision"
@@ -220,18 +258,24 @@ resource.labels.location="${REGION}"
 (resource.labels.service_name="${FRONTEND_SERVICE}" OR resource.labels.service_name="${BACKEND_SERVICE}")
 logName="projects/${PROJECT_ID}/logs/run.googleapis.com%2Frequests"
 timestamp >= "${START_TS}"
+timestamp < "${END_TS}"
 EOF
 )
 
-echo "Project : ${PROJECT_ID}"
-echo "Region  : ${REGION}"
-echo "Since   : ${START_TS}"
-echo "Output  : ${OUT_DIR}"
+echo "Project    : ${PROJECT_ID}"
+echo "Region     : ${REGION}"
+echo "Local TZ   : ${LOCAL_TZ}"
+echo "Start local: ${START_LOCAL}"
+echo "End local  : 2026-05-13 23:59:59"
+echo "Start UTC  : ${START_TS}"
+echo "End UTC    : ${END_TS} exclusive"
+echo "Output     : ${OUT_DIR}"
 
 gcloud logging read "${FILTER}" \
   --project="${PROJECT_ID}" \
   --format=json \
-  --freshness="${SINCE_HOURS}h" \
+  --freshness="${FRESHNESS}" \
+  --order=asc \
   --limit="${LIMIT}" \
   > "${RAW_JSON}"
 
@@ -253,7 +297,7 @@ def latency_to_ms:
   "status",
   "latency_ms",
   "remote_ip",
-  "remote_ip_hash",
+  "remote_ip_hash_base64",
   "user_agent",
   "trace",
   "insert_id"] | @csv),
@@ -284,15 +328,17 @@ chmod +x scripts/observability/export_cloudrun_request_logs.sh
 
 PROJECT_ID="miad-paad-rs-dev" \
 REGION="us-east4" \
-SINCE_HOURS="24" \
+LOCAL_TZ="America/Bogota" \
+START_LOCAL="2026-05-11 00:00:00" \
+END_LOCAL_EXCLUSIVE="2026-05-14 00:00:00" \
 scripts/observability/export_cloudrun_request_logs.sh
 ```
 
-> Nota: en el script anterior `remote_ip_hash` usa `base64` como anonimización mínima por simplicidad desde `jq`. Para anonimización real se recomienda hashear con SHA-256 en BigQuery o en un script Python.
+> Nota: en el script anterior `remote_ip_hash_base64` usa `base64` como anonimización mínima por simplicidad desde `jq`. Para anonimización real se recomienda hashear con SHA-256 en BigQuery o en un script Python.
 
 ---
 
-## 7. Habilitar Observability Analytics y linked dataset
+## 8. Habilitar Observability Analytics y linked dataset
 
 Para consultar logs con SQL se recomienda:
 
@@ -328,7 +374,7 @@ FROM `miad-paad-rs-dev.global._Default._AllLogs`
 
 ---
 
-## 8. Script 2 — Ejecutar queries SQL y exportar a CSV
+## 9. Script 2 — Ejecutar queries SQL y exportar a CSV
 
 Archivo sugerido:
 
@@ -377,9 +423,20 @@ scripts/observability/run_log_query_to_csv.sh queries/observability/cloudrun_lat
 
 ---
 
-# 9. Queries SQL
+# 10. Queries SQL
 
-## 9.1 Detalle de requests por frontend y backend
+Todas las queries de esta sección están fijadas al rango solicitado:
+
+```sql
+timestamp >= TIMESTAMP("2026-05-11T05:00:00Z")
+AND timestamp < TIMESTAMP("2026-05-14T05:00:00Z")
+```
+
+Esto corresponde al 11 de mayo de 2026 00:00:00 hasta el 13 de mayo de 2026 23:59:59 en hora Colombia.
+
+---
+
+## 10.1 Detalle de requests por frontend y backend
 
 Archivo:
 
@@ -408,7 +465,8 @@ SELECT
 FROM
   `miad-paad-rs-dev.global._Default._AllLogs`
 WHERE
-  timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
+  timestamp >= TIMESTAMP("2026-05-11T05:00:00Z")
+  AND timestamp < TIMESTAMP("2026-05-14T05:00:00Z")
   AND resource.type = "cloud_run_revision"
   AND JSON_VALUE(resource.labels.location) = "us-east4"
   AND JSON_VALUE(resource.labels.service_name) IN ("miad-rag-frontend", "miad-rag-backend")
@@ -420,7 +478,7 @@ ORDER BY
 
 ---
 
-## 9.2 Latencia agregada por endpoint
+## 10.2 Latencia agregada por endpoint
 
 Archivo:
 
@@ -443,7 +501,8 @@ WITH requests AS (
   FROM
     `miad-paad-rs-dev.global._Default._AllLogs`
   WHERE
-    timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
+    timestamp >= TIMESTAMP("2026-05-11T05:00:00Z")
+    AND timestamp < TIMESTAMP("2026-05-14T05:00:00Z")
     AND resource.type = "cloud_run_revision"
     AND JSON_VALUE(resource.labels.location) = "us-east4"
     AND JSON_VALUE(resource.labels.service_name) IN ("miad-rag-frontend", "miad-rag-backend")
@@ -475,7 +534,7 @@ ORDER BY
 
 ---
 
-## 9.3 Serie temporal de latencias
+## 10.3 Serie temporal de latencias
 
 Archivo:
 
@@ -496,7 +555,8 @@ WITH requests AS (
   FROM
     `miad-paad-rs-dev.global._Default._AllLogs`
   WHERE
-    timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
+    timestamp >= TIMESTAMP("2026-05-11T05:00:00Z")
+    AND timestamp < TIMESTAMP("2026-05-14T05:00:00Z")
     AND resource.type = "cloud_run_revision"
     AND JSON_VALUE(resource.labels.location) = "us-east4"
     AND JSON_VALUE(resource.labels.service_name) IN ("miad-rag-frontend", "miad-rag-backend")
@@ -523,7 +583,7 @@ ORDER BY
 
 ---
 
-## 9.4 Timeline detallado por request instrumentado
+## 10.4 Timeline detallado por request instrumentado
 
 Archivo:
 
@@ -546,7 +606,8 @@ SELECT
 FROM
   `miad-paad-rs-dev.global._Default._AllLogs`
 WHERE
-  timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
+  timestamp >= TIMESTAMP("2026-05-11T05:00:00Z")
+  AND timestamp < TIMESTAMP("2026-05-14T05:00:00Z")
   AND resource.type = "cloud_run_revision"
   AND JSON_VALUE(json_payload.event_type) = "rag_timing"
 ORDER BY
@@ -557,7 +618,7 @@ ORDER BY
 
 ---
 
-## 9.5 Building blocks por request
+## 10.5 Building blocks por request
 
 Archivo:
 
@@ -576,7 +637,8 @@ WITH timing AS (
   FROM
     `miad-paad-rs-dev.global._Default._AllLogs`
   WHERE
-    timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
+    timestamp >= TIMESTAMP("2026-05-11T05:00:00Z")
+    AND timestamp < TIMESTAMP("2026-05-14T05:00:00Z")
     AND resource.type = "cloud_run_revision"
     AND JSON_VALUE(json_payload.event_type) = "rag_timing"
 )
@@ -606,7 +668,7 @@ ORDER BY
 
 ---
 
-## 9.6 Permanencia por sesión
+## 10.6 Permanencia por sesión
 
 Archivo:
 
@@ -623,7 +685,8 @@ WITH events AS (
   FROM
     `miad-paad-rs-dev.global._Default._AllLogs`
   WHERE
-    timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
+    timestamp >= TIMESTAMP("2026-05-11T05:00:00Z")
+    AND timestamp < TIMESTAMP("2026-05-14T05:00:00Z")
     AND resource.type = "cloud_run_revision"
     AND JSON_VALUE(resource.labels.service_name) = "miad-rag-frontend"
     AND JSON_VALUE(json_payload.event_type) = "frontend_session_event"
@@ -646,9 +709,9 @@ ORDER BY
 
 ---
 
-# 10. Instrumentación sugerida en backend
+# 11. Instrumentación sugerida en backend
 
-## 10.1 Helper de timing
+## 11.1 Helper de timing
 
 Archivo sugerido:
 
@@ -725,7 +788,7 @@ def timed_stage(
         )
 ```
 
-## 10.2 Uso conceptual en endpoint `/api/v1/recommend`
+## 11.2 Uso conceptual en endpoint `/api/v1/recommend`
 
 ```python
 import uuid
@@ -779,9 +842,9 @@ with timed_stage(
 
 ---
 
-# 11. Instrumentación sugerida en frontend
+# 12. Instrumentación sugerida en frontend
 
-## 11.1 Generar sesión y request id
+## 12.1 Generar sesión y request id
 
 ```python
 import hashlib
@@ -836,7 +899,7 @@ def log_frontend_timing(
     logger.info(payload)
 ```
 
-## 11.2 Medir llamada frontend → backend
+## 12.2 Medir llamada frontend → backend
 
 ```python
 request_id = str(uuid.uuid4())
@@ -880,9 +943,9 @@ log_frontend_event("response_rendered", request_id=request_id)
 
 ---
 
-# 12. Interpretación de resultados
+# 13. Interpretación de resultados
 
-## 12.1 Lectura mínima
+## 13.1 Lectura mínima
 
 | Métrica | Interpretación |
 |---|---|
@@ -895,7 +958,7 @@ log_frontend_event("response_rendered", request_id=request_id)
 | `observed_e2e_ms` | Ventana entre primer y último evento instrumentado |
 | `total_instrumented_ms` | Suma de bloques medidos |
 
-## 12.2 Cómo detectar cuellos de botella
+## 13.2 Cómo detectar cuellos de botella
 
 1. Revisar `cloudrun_latency_by_endpoint.sql`.
 2. Identificar si el problema está en frontend o backend.
@@ -906,7 +969,7 @@ log_frontend_event("response_rendered", request_id=request_id)
 
 ---
 
-# 13. Salidas recomendadas para análisis
+# 14. Salidas recomendadas para análisis
 
 Para Google Sheets:
 
@@ -927,7 +990,7 @@ Para análisis estadístico posterior:
 
 ---
 
-# 14. Puente hacia análisis de costos
+# 15. Puente hacia análisis de costos
 
 Una vez estabilizado el timeline, el análisis de costos debería cruzar:
 
@@ -952,13 +1015,13 @@ Este runbook deja lista la base para proyectar:
 
 ---
 
-# 15. Checklist de implementación
+# 16. Checklist de implementación
 
 ## Medición inmediata
 
 - [ ] Crear carpeta `scripts/observability`.
 - [ ] Crear `export_cloudrun_request_logs.sh`.
-- [ ] Ejecutar exportación de últimas 24 horas.
+- [ ] Ejecutar exportación del rango `2026-05-11 00:00:00` a `2026-05-13 23:59:59` hora Colombia.
 - [ ] Validar CSV en Google Sheets.
 - [ ] Identificar p50, p95 y p99 por servicio.
 
@@ -985,17 +1048,16 @@ Este runbook deja lista la base para proyectar:
 
 ---
 
-# 16. Recomendación práctica
+# 17. Recomendación práctica
 
 Para una primera entrega o validación rápida, hacer esto en orden:
 
-1. Ejecutar `export_cloudrun_request_logs.sh`.
+1. Ejecutar `export_cloudrun_request_logs.sh` para el rango del 11 al 13 de mayo de 2026.
 2. Sacar CSV de frontend y backend.
 3. Medir p50/p95/p99 por endpoint.
 4. Habilitar Observability Analytics.
-5. Correr `cloudrun_latency_by_endpoint.sql`.
+5. Correr `cloudrun_latency_by_endpoint.sql` con el rango fijo en UTC.
 6. Instrumentar solo el endpoint `/api/v1/recommend`.
 7. Medir building blocks internos del RAG.
 8. Con esa evidencia construir el timeline end-to-end.
 9. Pasar a costos por solicitud y proyección de usuarios.
-
