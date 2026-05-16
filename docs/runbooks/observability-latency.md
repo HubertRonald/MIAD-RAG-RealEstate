@@ -1,186 +1,91 @@
-# Observability Latency Runbook
+# Observability Latency Runbook — Medición histórica post-pruebas
 
-## MIAD RAG Real Estate — Medición de tiempos end-to-end
+## MIAD RAG Real Estate — Ventana 11 a 13 de mayo de 2026
 
-Este documento describe cómo medir los tiempos de respuesta del recomendador inmobiliario desde que el usuario lanza una búsqueda en el frontend hasta que recibe la respuesta renderizada.
+Este documento describe cómo medir los tiempos disponibles **después de cerradas las pruebas con usuarios**, usando únicamente la evidencia que ya quedó registrada en Cloud Logging / Cloud Run.
 
-El objetivo es separar la medición en dos niveles:
-
-1. **Medición inmediata con logs nativos de Cloud Run**  
-   Permite medir latencias HTTP del frontend y backend sin modificar código.
-
-2. **Medición fina por building blocks del flujo RAG**  
-   Permite medir tiempos internos del backend: embeddings, FAISS, BigQuery, generación con Gemini, serialización y renderizado en frontend.  
-   Este nivel requiere agregar logs estructurados en frontend y backend.
-
----
-
-## 1. Ventana de medición solicitada
-
-La medición debe tomar como rango principal:
+La medición solicitada corresponde a:
 
 | Zona horaria | Inicio inclusivo | Fin inclusivo |
 |---|---:|---:|
 | America/Bogota | `2026-05-11 00:00:00` | `2026-05-13 23:59:59` |
 
-Como Cloud Logging y BigQuery trabajan normalmente con timestamps UTC, el rango equivalente recomendado para consultas es:
-
-| Zona horaria | Inicio inclusivo | Fin exclusivo recomendado |
-|---|---:|---:|
-| UTC | `2026-05-11T05:00:00Z` | `2026-05-14T05:00:00Z` |
-
-Se usa **fin exclusivo** para evitar problemas de precisión con milisegundos, microsegundos o nanosegundos:
+Equivalente recomendado en UTC:
 
 ```sql
 timestamp >= TIMESTAMP("2026-05-11T05:00:00Z")
 AND timestamp < TIMESTAMP("2026-05-14T05:00:00Z")
 ```
 
-Esto captura todo lo ocurrido desde el lunes 11 de mayo de 2026 a las 00:00:00 en Colombia hasta el miércoles 13 de mayo de 2026 a las 23:59:59 en Colombia.
+Se usa fin exclusivo (`< 2026-05-14T05:00:00Z`) para cubrir hasta el último instante del 13 de mayo en hora Colombia sin problemas de precisión.
 
 ---
 
-## 2. Arquitectura observada
+## 1. Aclaración importante sobre medición histórica
 
-Flujo funcional del recomendador:
+Como las pruebas con usuarios ya cerraron, **no es posible reconstruir retroactivamente tiempos internos que no fueron registrados en su momento**.
 
-```mermaid
-sequenceDiagram
-    participant U as Usuario
-    participant FE as Frontend Cloud Run / Streamlit
-    participant BE as Backend Cloud Run / FastAPI
-    participant GCS as Cloud Storage / FAISS Index
-    participant FAISS as FAISS local en Cloud Run
-    participant BQ as BigQuery
-    participant GEM as Gemini API
+Esto significa:
 
-    U->>FE: Parametriza búsqueda
-    U->>FE: Ejecuta consulta
-    FE->>BE: POST /api/v1/recommend
-    BE->>GEM: Genera embedding de consulta
-    GEM-->>BE: Embedding
-    BE->>FAISS: Similarity search
-    FAISS-->>BE: IDs candidatos
-    BE->>BQ: Enriquecimiento de listings
-    BQ-->>BE: Metadata de propiedades
-    BE->>GEM: Generación / explicación RAG
-    GEM-->>BE: Respuesta generada
-    BE-->>FE: JSON recomendaciones
-    FE-->>U: Renderiza resultado
+| Medición | ¿Se puede medir históricamente? | Fuente |
+|---|---:|---|
+| Latencia HTTP del frontend Cloud Run | Sí | Request logs nativos de Cloud Run |
+| Latencia HTTP del backend Cloud Run | Sí | Request logs nativos de Cloud Run |
+| Status HTTP, errores 4xx/5xx | Sí | Request logs nativos de Cloud Run |
+| IP vista por Cloud Run | Sí, con cuidado | `httpRequest.remoteIp` |
+| User agent | Sí | `httpRequest.userAgent` |
+| Trace de Cloud Logging | Parcial | `trace` |
+| Tiempo exacto Gemini embedding | No, salvo que ya existan logs propios | Requiere instrumentación previa |
+| Tiempo exacto FAISS retrieval | No, salvo que ya existan logs propios | Requiere instrumentación previa |
+| Tiempo exacto BigQuery enrichment por request | No, salvo que ya existan logs propios o job labels | Requiere instrumentación previa |
+| Tiempo exacto Gemini generation | No, salvo que ya existan logs propios | Requiere instrumentación previa |
+| Tiempo de permanencia por sesión | No confiable si no se registraron eventos de sesión | Requiere instrumentación previa |
+
+Conclusión práctica:
+
+> Para la entrega histórica del 11 al 13 de mayo de 2026, la medición defendible debe concentrarse en latencias HTTP reales de Cloud Run para frontend y backend. Los tiempos internos del RAG solo pueden declararse como una limitación si no estaban instrumentados durante las pruebas.
+
+---
+
+## 2. Qué archivos sí sirven y cuáles no
+
+### 2.1 Archivos que sí sirven con lo que ya existe
+
+Estos archivos funcionan usando logs nativos de Cloud Run, siempre que los logs del rango consultado aún estén retenidos:
+
+```text
+queries/
+└── observability/
+    ├── cloudrun_request_detail.sql
+    ├── cloudrun_latency_by_endpoint.sql
+    ├── cloudrun_latency_timeseries.sql
+    └── cloudrun_backend_app_logs_inventory.sql
+
+scripts/
+└── observability/
+    ├── export_cloudrun_request_logs.sh
+    └── run_log_query_to_csv.sh
 ```
 
-Servicios principales en ambiente dev:
+### 2.2 Archivos que no sirven para la medición histórica si no hubo instrumentación
 
-| Componente | Valor |
-|---|---|
-| Proyecto GCP | `miad-paad-rs-dev` |
-| Región | `us-east4` |
-| Frontend Cloud Run | `miad-rag-frontend` |
-| Backend Cloud Run | `miad-rag-backend` |
-| Bucket índice FAISS | `miad-paad-rs-index-dev` |
-| Dataset BigQuery | `ds_miad_rag_rs` |
-| Tabla BigQuery | `real_estate_listings` |
+Estos archivos **no devolverán datos útiles** ya que en las pruebas no se emitieron logs JSON con `event_type = "rag_timing"` o `event_type = "frontend_session_event"`:
 
----
-
-## 3. Qué se puede medir sin modificar código
-
-Con los request logs nativos de Cloud Run se puede medir:
-
-| Bloque | Fuente | Qué mide |
-|---|---|---|
-| Usuario → Frontend | Request logs del frontend | Latencia HTTP del frontend |
-| Frontend → Backend | Request logs del backend | Latencia HTTP del backend |
-| Backend total | Request logs backend | Tiempo completo de `/api/v1/recommend` o `/api/v1/ask` |
-| Errores HTTP | Request logs | Estados 4xx / 5xx |
-| IP aproximada | `httpRequest.remoteIp` | IP vista por Cloud Run |
-| User agent | `httpRequest.userAgent` | Navegador / cliente |
-| Trace | `trace` | Correlación parcial de logs |
-
-Limitación importante:
-
-> Los request logs nativos no permiten separar internamente cuánto tomó Gemini, FAISS, BigQuery o la serialización de respuesta. Para eso se requiere instrumentación estructurada en el código.
-
----
-
-## 4. Qué requiere instrumentación adicional
-
-Para obtener un timeline real por solicitud se deben emitir logs JSON desde frontend y backend.
-
-Etapas recomendadas:
-
-| Orden | Stage | Componente |
-|---:|---|---|
-| 10 | `frontend_search_submitted` | Frontend |
-| 20 | `frontend_backend_call` | Frontend |
-| 30 | `backend_request_total` | Backend |
-| 40 | `query_understanding` | Backend |
-| 50 | `gemini_embedding` | Backend |
-| 60 | `faiss_retrieval` | Backend |
-| 70 | `bigquery_enrichment` | Backend |
-| 80 | `gemini_generation` | Backend |
-| 90 | `response_serialization` | Backend |
-| 100 | `frontend_response_rendered` | Frontend |
-
-Formato sugerido del log estructurado:
-
-```json
-{
-  "event_type": "rag_timing",
-  "request_id": "uuid",
-  "session_id_hash": "hash",
-  "component": "backend",
-  "stage_order": 70,
-  "stage": "bigquery_enrichment",
-  "duration_ms": 438.7,
-  "status": "ok",
-  "records_found": 10
-}
+```text
+queries/
+└── observability/
+    ├── rag_timeline_detail.sql
+    ├── rag_timeline_building_blocks.sql
+    └── frontend_session_duration.sql
 ```
 
-Para eventos de sesión en frontend:
-
-```json
-{
-  "event_type": "frontend_session_event",
-  "event_name": "search_submitted",
-  "session_id_hash": "hash",
-  "request_id": "uuid",
-  "status": "ok"
-}
-```
+Estos archivos pueden conservarse solo como propuesta futura, pero **no deberían usarse como evidencia de las pruebas históricas**.
 
 ---
 
-## 5. Privacidad y trazabilidad
+## 3. Estructura recomendada en el repo
 
-Para análisis por sesión o usuario se recomienda:
-
-- No usar la IP como identificador principal.
-- Generar un `session_id` en Streamlit usando `st.session_state`.
-- Guardar solo un hash del `session_id`.
-- Si se analiza IP, preferir `remote_ip_hash`.
-- No exportar logs crudos con IPs a repositorios.
-- No subir CSV o JSON generados al repo.
-
-Ejemplo conceptual:
-
-```python
-import hashlib
-import uuid
-import streamlit as st
-
-if "session_id" not in st.session_state:
-    st.session_state["session_id"] = str(uuid.uuid4())
-
-session_id_hash = hashlib.sha256(
-    st.session_state["session_id"].encode("utf-8")
-).hexdigest()
-```
-
----
-
-## 6. Estructura sugerida en el repo
+Para la medición histórica, dejaría la estructura así:
 
 ```text
 MIAD-RAG-RealEstate/
@@ -192,9 +97,7 @@ MIAD-RAG-RealEstate/
 │       ├── cloudrun_request_detail.sql
 │       ├── cloudrun_latency_by_endpoint.sql
 │       ├── cloudrun_latency_timeseries.sql
-│       ├── rag_timeline_detail.sql
-│       ├── rag_timeline_building_blocks.sql
-│       └── frontend_session_duration.sql
+│       └── cloudrun_backend_app_logs_inventory.sql
 └── scripts/
     └── observability/
         ├── export_cloudrun_request_logs.sh
@@ -209,11 +112,13 @@ observability_exports/
 *.local.json
 ```
 
+No subir al repo los CSV o JSON exportados, porque pueden contener IP, user agent, trazas o URLs.
+
 ---
 
-## 7. Script 1 — Exportar request logs nativos de Cloud Run
+## 4. Script para exportar request logs nativos de Cloud Run
 
-Archivo sugerido:
+Archivo:
 
 ```text
 scripts/observability/export_cloudrun_request_logs.sh
@@ -238,7 +143,6 @@ START_TS="$(TZ="${LOCAL_TZ}" date -d "${START_LOCAL}" -u +"%Y-%m-%dT%H:%M:%SZ")"
 END_TS="$(TZ="${LOCAL_TZ}" date -d "${END_LOCAL_EXCLUSIVE}" -u +"%Y-%m-%dT%H:%M:%SZ")"
 
 # Debe cubrir al menos la antigüedad de la ventana consultada.
-# Si se ejecuta pocos días después, 30d es suficiente para logs retenidos en _Default.
 FRESHNESS="${FRESHNESS:-30d}"
 
 LIMIT="${LIMIT:-50000}"
@@ -297,7 +201,7 @@ def latency_to_ms:
   "status",
   "latency_ms",
   "remote_ip",
-  "remote_ip_hash_base64",
+  "remote_ip_base64",
   "user_agent",
   "trace",
   "insert_id"] | @csv),
@@ -331,52 +235,17 @@ REGION="us-east4" \
 LOCAL_TZ="America/Bogota" \
 START_LOCAL="2026-05-11 00:00:00" \
 END_LOCAL_EXCLUSIVE="2026-05-14 00:00:00" \
+FRESHNESS="30d" \
 scripts/observability/export_cloudrun_request_logs.sh
 ```
 
-> Nota: en el script anterior `remote_ip_hash_base64` usa `base64` como anonimización mínima por simplicidad desde `jq`. Para anonimización real se recomienda hashear con SHA-256 en BigQuery o en un script Python.
-
 ---
 
-## 8. Habilitar Observability Analytics y linked dataset
+## 5. Script para ejecutar queries SQL y exportar CSV
 
-Para consultar logs con SQL se recomienda:
+Este script aplica cuando ya existe un **linked dataset** de Log Analytics hacia BigQuery.
 
-1. Ir a Cloud Logging.
-2. Entrar a Log Storage.
-3. Seleccionar el bucket, usualmente `_Default`.
-4. Habilitar / actualizar el bucket para **Log Analytics / Observability Analytics**.
-5. Crear un linked dataset para consultarlo desde BigQuery.
-
-Comando sugerido:
-
-```bash
-PROJECT_ID="miad-paad-rs-dev"
-LINKED_DATASET="logging_miad_rag"
-
-gcloud logging links create "${LINKED_DATASET}" \
-  --bucket="_Default" \
-  --location="global" \
-  --project="${PROJECT_ID}"
-```
-
-Después de crear el link, las queries para `bq` deberían usar una referencia parecida a:
-
-```sql
-FROM `miad-paad-rs-dev.logging_miad_rag._AllLogs`
-```
-
-En la consola de Observability Analytics puede usarse una referencia parecida a:
-
-```sql
-FROM `miad-paad-rs-dev.global._Default._AllLogs`
-```
-
----
-
-## 9. Script 2 — Ejecutar queries SQL y exportar a CSV
-
-Archivo sugerido:
+Archivo:
 
 ```text
 scripts/observability/run_log_query_to_csv.sh
@@ -423,20 +292,32 @@ scripts/observability/run_log_query_to_csv.sh queries/observability/cloudrun_lat
 
 ---
 
-# 10. Queries SQL
+# 6. Queries SQL históricas
 
-Todas las queries de esta sección están fijadas al rango solicitado:
+Todas las queries están fijadas a:
 
 ```sql
 timestamp >= TIMESTAMP("2026-05-11T05:00:00Z")
 AND timestamp < TIMESTAMP("2026-05-14T05:00:00Z")
 ```
 
-Esto corresponde al 11 de mayo de 2026 00:00:00 hasta el 13 de mayo de 2026 23:59:59 en hora Colombia.
+En Observability Analytics puede usarse:
+
+```sql
+FROM `miad-paad-rs-dev.global._Default._AllLogs`
+```
+
+En BigQuery mediante linked dataset puede usarse:
+
+```sql
+FROM `miad-paad-rs-dev.logging_miad_rag._AllLogs`
+```
+
+El script `run_log_query_to_csv.sh` reemplaza automáticamente la primera referencia por la segunda.
 
 ---
 
-## 10.1 Detalle de requests por frontend y backend
+## 6.1 Detalle request por request
 
 Archivo:
 
@@ -478,7 +359,7 @@ ORDER BY
 
 ---
 
-## 10.2 Latencia agregada por endpoint
+## 6.2 Latencia agregada por servicio y endpoint
 
 Archivo:
 
@@ -534,7 +415,7 @@ ORDER BY
 
 ---
 
-## 10.3 Serie temporal de latencias
+## 6.3 Serie temporal de latencias por minuto
 
 Archivo:
 
@@ -583,133 +464,159 @@ ORDER BY
 
 ---
 
-## 10.4 Timeline detallado por request instrumentado
+## 6.4 Inventario exploratorio de logs de aplicación backend
+
+Esta query no mide latencias internas por sí sola, pero ayuda a revisar si durante las pruebas quedaron logs propios del backend mencionando `bigquery`, `gemini`, `faiss`, `gcs`, `retrieval`, `generation`, `recommend` o errores asociados.
 
 Archivo:
 
 ```text
-queries/observability/rag_timeline_detail.sql
+queries/observability/cloudrun_backend_app_logs_inventory.sql
 ```
 
 ```sql
 SELECT
   timestamp,
+  severity,
+  log_id,
   trace,
-  JSON_VALUE(json_payload.request_id) AS request_id,
-  JSON_VALUE(json_payload.session_id_hash) AS session_id_hash,
-  JSON_VALUE(json_payload.component) AS component,
-  CAST(JSON_VALUE(json_payload.stage_order) AS INT64) AS stage_order,
-  JSON_VALUE(json_payload.stage) AS stage,
-  CAST(JSON_VALUE(json_payload.duration_ms) AS FLOAT64) AS duration_ms,
-  JSON_VALUE(json_payload.status) AS status,
-  json_payload
+  JSON_VALUE(resource.labels.service_name) AS service_name,
+  JSON_VALUE(resource.labels.revision_name) AS revision_name,
+  text_payload,
+  json_payload,
+  proto_payload
 FROM
   `miad-paad-rs-dev.global._Default._AllLogs`
 WHERE
   timestamp >= TIMESTAMP("2026-05-11T05:00:00Z")
   AND timestamp < TIMESTAMP("2026-05-14T05:00:00Z")
   AND resource.type = "cloud_run_revision"
-  AND JSON_VALUE(json_payload.event_type) = "rag_timing"
+  AND JSON_VALUE(resource.labels.location) = "us-east4"
+  AND JSON_VALUE(resource.labels.service_name) = "miad-rag-backend"
+  AND log_id != "run.googleapis.com/requests"
+  AND (
+    LOWER(COALESCE(text_payload, "")) LIKE "%bigquery%"
+    OR LOWER(COALESCE(text_payload, "")) LIKE "%gemini%"
+    OR LOWER(COALESCE(text_payload, "")) LIKE "%faiss%"
+    OR LOWER(COALESCE(text_payload, "")) LIKE "%gcs%"
+    OR LOWER(COALESCE(text_payload, "")) LIKE "%retrieval%"
+    OR LOWER(COALESCE(text_payload, "")) LIKE "%generation%"
+    OR LOWER(COALESCE(text_payload, "")) LIKE "%recommend%"
+    OR LOWER(TO_JSON_STRING(json_payload)) LIKE "%bigquery%"
+    OR LOWER(TO_JSON_STRING(json_payload)) LIKE "%gemini%"
+    OR LOWER(TO_JSON_STRING(json_payload)) LIKE "%faiss%"
+    OR LOWER(TO_JSON_STRING(json_payload)) LIKE "%gcs%"
+    OR LOWER(TO_JSON_STRING(json_payload)) LIKE "%retrieval%"
+    OR LOWER(TO_JSON_STRING(json_payload)) LIKE "%generation%"
+    OR LOWER(TO_JSON_STRING(json_payload)) LIKE "%recommend%"
+  )
 ORDER BY
-  request_id,
-  stage_order,
-  timestamp;
+  timestamp ASC;
 ```
 
 ---
 
-## 10.5 Building blocks por request
+# 7. Cómo interpretar lo que sí se obtiene
 
-Archivo:
+## 7.1 Con `cloudrun_latency_by_endpoint.sql`
 
-```text
-queries/observability/rag_timeline_building_blocks.sql
-```
+Resultado esperado:
 
-```sql
-WITH timing AS (
-  SELECT
-    JSON_VALUE(json_payload.request_id) AS request_id,
-    JSON_VALUE(json_payload.session_id_hash) AS session_id_hash,
-    JSON_VALUE(json_payload.stage) AS stage,
-    CAST(JSON_VALUE(json_payload.duration_ms) AS FLOAT64) AS duration_ms,
-    timestamp
-  FROM
-    `miad-paad-rs-dev.global._Default._AllLogs`
-  WHERE
-    timestamp >= TIMESTAMP("2026-05-11T05:00:00Z")
-    AND timestamp < TIMESTAMP("2026-05-14T05:00:00Z")
-    AND resource.type = "cloud_run_revision"
-    AND JSON_VALUE(json_payload.event_type) = "rag_timing"
-)
-SELECT
-  request_id,
-  ANY_VALUE(session_id_hash) AS session_id_hash,
-  MIN(timestamp) AS first_event_ts,
-  MAX(timestamp) AS last_event_ts,
-  TIMESTAMP_DIFF(MAX(timestamp), MIN(timestamp), MILLISECOND) AS observed_e2e_ms,
+| Campo | Uso |
+|---|---|
+| `service_name` | Diferencia frontend vs backend |
+| `path` | Identifica `/`, `/api/v1/recommend`, `/api/v1/ask`, healthchecks, etc. |
+| `requests` | Volumen de llamadas |
+| `errors_4xx` | Problemas de autenticación, permisos o cliente |
+| `errors_5xx` | Problemas de backend o runtime |
+| `avg_ms` | Promedio general |
+| `p50_ms` | Experiencia típica |
+| `p95_ms` | Experiencia lenta |
+| `p99_ms` | Casos extremos |
 
-  MAX(IF(stage = "frontend_backend_call", duration_ms, NULL)) AS frontend_backend_call_ms,
-  MAX(IF(stage = "query_understanding", duration_ms, NULL)) AS query_understanding_ms,
-  MAX(IF(stage = "gemini_embedding", duration_ms, NULL)) AS gemini_embedding_ms,
-  MAX(IF(stage = "faiss_retrieval", duration_ms, NULL)) AS faiss_retrieval_ms,
-  MAX(IF(stage = "bigquery_enrichment", duration_ms, NULL)) AS bigquery_enrichment_ms,
-  MAX(IF(stage = "gemini_generation", duration_ms, NULL)) AS gemini_generation_ms,
-  MAX(IF(stage = "response_serialization", duration_ms, NULL)) AS response_serialization_ms,
-  MAX(IF(stage = "frontend_response_rendered", duration_ms, NULL)) AS frontend_response_rendered_ms,
+## 7.2 Con `cloudrun_request_detail.sql`
 
-  SUM(duration_ms) AS total_instrumented_ms
-FROM timing
-GROUP BY
-  request_id
-ORDER BY
-  first_event_ts DESC;
-```
+Permite revisar request por request:
+
+- timestamp;
+- servicio;
+- endpoint;
+- status;
+- latencia;
+- IP;
+- user agent;
+- trace.
+
+Sirve para seleccionar casos extremos y revisar si se concentran en una hora, endpoint, revisión o usuario/IP.
+
+## 7.3 Con `cloudrun_latency_timeseries.sql`
+
+Permite ver comportamiento por minuto:
+
+- picos de tráfico;
+- picos de p95/p99;
+- errores por minuto;
+- diferencias frontend/backend.
+
+## 7.4 Con `cloudrun_backend_app_logs_inventory.sql`
+
+Permite revisar si quedó evidencia textual adicional de ejecución interna.
+
+Si no hay logs con duraciones internas, esta query no permite inferir tiempos exactos de BigQuery, GCS, Gemini o FAISS. Solo ayuda a documentar qué mensajes existían.
 
 ---
 
-## 10.6 Permanencia por sesión
+# 8. Limitaciones para el informe
 
-Archivo:
+Texto sugerido para el informe:
+
+> Dado que la ventana de pruebas con usuarios ya se encontraba cerrada al momento del análisis, la medición se realizó con logs históricos disponibles en Cloud Logging. Esto permite calcular latencias HTTP reales de los servicios Cloud Run de frontend y backend para el periodo comprendido entre el 11 de mayo de 2026 a las 00:00:00 y el 13 de mayo de 2026 a las 23:59:59 hora Colombia. Sin embargo, no es posible reconstruir retroactivamente los tiempos internos por etapa del pipeline RAG —por ejemplo, embeddings Gemini, recuperación FAISS, enriquecimiento BigQuery o generación LLM— si dichos eventos no fueron instrumentados y registrados durante la ejecución de las pruebas. Por tanto, el análisis histórico se limita a tiempos observables desde la infraestructura y deja la instrumentación fina como recomendación para pruebas futuras.
+
+---
+
+# 9. Checklist mínimo para la medición histórica
+
+- [ ] Verificar que los logs del 11 al 13 de mayo de 2026 aún estén retenidos.
+- [ ] Ejecutar `export_cloudrun_request_logs.sh`.
+- [ ] Revisar si el CSV trae registros de `miad-rag-frontend` y `miad-rag-backend`.
+- [ ] Si hay Observability Analytics, correr `cloudrun_latency_by_endpoint.sql`.
+- [ ] Exportar `cloudrun_request_detail.csv`.
+- [ ] Exportar `cloudrun_latency_by_endpoint.csv`.
+- [ ] Exportar `cloudrun_latency_timeseries.csv`.
+- [ ] Revisar logs de aplicación con `cloudrun_backend_app_logs_inventory.sql`.
+- [ ] Documentar limitación de medición interna no retroactiva.
+- [ ] Preparar análisis de p50, p95, p99 y errores.
+
+---
+
+# 10. Recomendación práctica
+
+Actualmente usar solo:
 
 ```text
-queries/observability/frontend_session_duration.sql
+cloudrun_request_detail.sql
+cloudrun_latency_by_endpoint.sql
+cloudrun_latency_timeseries.sql
+cloudrun_backend_app_logs_inventory.sql
+export_cloudrun_request_logs.sh
+run_log_query_to_csv.sh
 ```
 
-```sql
-WITH events AS (
-  SELECT
-    JSON_VALUE(json_payload.session_id_hash) AS session_id_hash,
-    JSON_VALUE(json_payload.event_name) AS event_name,
-    timestamp
-  FROM
-    `miad-paad-rs-dev.global._Default._AllLogs`
-  WHERE
-    timestamp >= TIMESTAMP("2026-05-11T05:00:00Z")
-    AND timestamp < TIMESTAMP("2026-05-14T05:00:00Z")
-    AND resource.type = "cloud_run_revision"
-    AND JSON_VALUE(resource.labels.service_name) = "miad-rag-frontend"
-    AND JSON_VALUE(json_payload.event_type) = "frontend_session_event"
-)
-SELECT
-  session_id_hash,
-  MIN(timestamp) AS first_seen,
-  MAX(timestamp) AS last_seen,
-  TIMESTAMP_DIFF(MAX(timestamp), MIN(timestamp), SECOND) AS active_seconds,
-  COUNTIF(event_name = "session_started") AS session_started_events,
-  COUNTIF(event_name = "search_submitted") AS searches_submitted,
-  COUNTIF(event_name = "backend_response_received") AS backend_responses_received,
-  COUNTIF(event_name = "response_rendered") AS responses_rendered
-FROM events
-GROUP BY
-  session_id_hash
-ORDER BY
-  last_seen DESC;
+No usar como evidencia histórica:
+
+```text
+rag_timeline_detail.sql
+rag_timeline_building_blocks.sql
+frontend_session_duration.sql
 ```
+
+Estos últimos solo tendrían sentido si el frontend/backend emiten logs estructurados durante las pruebas.
 
 ---
 
 # 11. Instrumentación sugerida en backend
+
+Futura implementación
 
 ## 11.1 Helper de timing
 
@@ -940,124 +847,3 @@ log_frontend_event("backend_response_received", request_id=request_id)
 # Luego de renderizar resultado:
 log_frontend_event("response_rendered", request_id=request_id)
 ```
-
----
-
-# 13. Interpretación de resultados
-
-## 13.1 Lectura mínima
-
-| Métrica | Interpretación |
-|---|---|
-| `avg_ms` | Promedio general. Útil, pero sensible a outliers |
-| `p50_ms` | Mediana. Representa experiencia típica |
-| `p95_ms` | Buen indicador para experiencia lenta |
-| `p99_ms` | Casos extremos |
-| `errors_4xx` | Errores de cliente, auth o rutas |
-| `errors_5xx` | Errores de backend o infraestructura |
-| `observed_e2e_ms` | Ventana entre primer y último evento instrumentado |
-| `total_instrumented_ms` | Suma de bloques medidos |
-
-## 13.2 Cómo detectar cuellos de botella
-
-1. Revisar `cloudrun_latency_by_endpoint.sql`.
-2. Identificar si el problema está en frontend o backend.
-3. Si backend domina la latencia, revisar `rag_timeline_building_blocks.sql`.
-4. Ordenar por `gemini_generation_ms`, `bigquery_enrichment_ms`, `gemini_embedding_ms` o `faiss_retrieval_ms`.
-5. Cruzar p95/p99 contra errores.
-6. Revisar si existen cold starts, cambios de revisión o picos por hora.
-
----
-
-# 14. Salidas recomendadas para análisis
-
-Para Google Sheets:
-
-- `cloudrun_request_detail.csv`
-- `cloudrun_latency_by_endpoint.csv`
-- `cloudrun_latency_timeseries.csv`
-- `rag_timeline_building_blocks.csv`
-- `frontend_session_duration.csv`
-
-Para análisis estadístico posterior:
-
-- percentiles por endpoint;
-- percentiles por bloque RAG;
-- distribución por sesión;
-- errores por hora;
-- comparación entre revisiones Cloud Run;
-- tiempos antes/después de optimizaciones.
-
----
-
-# 15. Puente hacia análisis de costos
-
-Una vez estabilizado el timeline, el análisis de costos debería cruzar:
-
-| Bloque | Variable de costo |
-|---|---|
-| Frontend Cloud Run | Requests, CPU, memoria, tiempo activo |
-| Backend Cloud Run | Requests, CPU, memoria, duración |
-| Gemini Embedding | Número de consultas, tokens/caracteres |
-| Gemini Generation | Tokens input/output |
-| BigQuery | Bytes procesados, frecuencia de consultas |
-| Cloud Storage | Lecturas de índice FAISS, tamaño de artefactos |
-| Logging | Volumen de logs retenidos |
-| Observability Analytics | Consultas y almacenamiento según configuración |
-
-Este runbook deja lista la base para proyectar:
-
-- costo por solicitud;
-- costo por usuario;
-- costo por sesión;
-- costo por 100, 1.000 y 10.000 consultas;
-- arquitectura actual vs arquitectura optimizada.
-
----
-
-# 16. Checklist de implementación
-
-## Medición inmediata
-
-- [ ] Crear carpeta `scripts/observability`.
-- [ ] Crear `export_cloudrun_request_logs.sh`.
-- [ ] Ejecutar exportación del rango `2026-05-11 00:00:00` a `2026-05-13 23:59:59` hora Colombia.
-- [ ] Validar CSV en Google Sheets.
-- [ ] Identificar p50, p95 y p99 por servicio.
-
-## Observability Analytics
-
-- [ ] Habilitar Analytics en bucket `_Default`.
-- [ ] Crear linked dataset.
-- [ ] Crear carpeta `queries/observability`.
-- [ ] Subir queries SQL.
-- [ ] Crear script `run_log_query_to_csv.sh`.
-- [ ] Exportar CSV desde `bq`.
-
-## Instrumentación fina
-
-- [ ] Crear helper de timing en backend.
-- [ ] Propagar `X-Request-ID`.
-- [ ] Propagar `X-Session-ID-Hash`.
-- [ ] Medir embeddings.
-- [ ] Medir FAISS.
-- [ ] Medir BigQuery.
-- [ ] Medir generación Gemini.
-- [ ] Medir render frontend.
-- [ ] Consultar `rag_timeline_building_blocks.sql`.
-
----
-
-# 17. Recomendación práctica
-
-Para una primera entrega o validación rápida, hacer esto en orden:
-
-1. Ejecutar `export_cloudrun_request_logs.sh` para el rango del 11 al 13 de mayo de 2026.
-2. Sacar CSV de frontend y backend.
-3. Medir p50/p95/p99 por endpoint.
-4. Habilitar Observability Analytics.
-5. Correr `cloudrun_latency_by_endpoint.sql` con el rango fijo en UTC.
-6. Instrumentar solo el endpoint `/api/v1/recommend`.
-7. Medir building blocks internos del RAG.
-8. Con esa evidencia construir el timeline end-to-end.
-9. Pasar a costos por solicitud y proyección de usuarios.
