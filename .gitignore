@@ -801,3 +801,7 @@ data/outputs/valid_barrios_proj_290426.csv
 data/outputs/real_estate_listings.csv
 _realstate_ragas/faiss_index/realstate_mvd/index.faiss
 _realstate_ragas/faiss_index/realstate_mvd/index.pkl
+
+observability_exports/
+*.local.csv
+*.local.json

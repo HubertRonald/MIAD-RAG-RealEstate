@@ -83,7 +83,7 @@
 
 ## Integrantes
 
-A. Barbosa, M. Marin, P. Luissi, R. Mendoza
+Barbosa A., Marin M., Luissi P., Mendoza R. 
 
 ## Resumen
 
@@ -148,117 +148,6 @@ Este diagrama de secuencia describe el flujo de ejecución del sistema de recome
 </p>
 
 
-## Estructura del repositorio
-
-Estructura principal
-
-```bash
-MIAD-RAG-RealEstate/
-├── .github/
-│   └── workflows/
-│       ├── backend-ci.yml
-│       ├── frontend-ci.yml
-│       ├── job-ci.yml
-│       └── terraform.yml
-│
-├── infra/                         # Infraestructura como código (Terraform)
-│   ├── bootstrap/
-│   │   ├── backend.tf
-│   │   ├── providers.tf
-│   │   └── versions.tf
-│   ├── envs/
-│   │   └── dev/
-│   │       ├── main.tf
-│   │       ├── variables.tf
-│   │       ├── outputs.tf
-│   │       └── terraform.tfvars
-│   └── modules/
-│       ├── artifact_registry/
-│       ├── cloud_run_service/
-│       ├── cloud_run_job/
-│       ├── bigquery/
-│       ├── gcs/
-│       ├── iam/
-│       └── secrets/
-│
-├── apps/
-│   ├── backend/                   # Cloud Run - RAG Orchestrator
-│   │   ├── app/
-│   │   │   ├── routers/
-│   │   │   ├── services/
-│   │   │   │   ├── query_understanding_service.py
-│   │   │   │   ├── embedding_service.py
-│   │   │   │   ├── retrieval_service.py
-│   │   │   │   ├── generation_service.py
-│   │   │   │   └── rag_orchestrator_service.py
-│   │   │   ├── models/
-│   │   │   └── utils/
-│   │   ├── tests/
-│   │   ├── main.py
-│   │   ├── requirements.txt
-│   │   └── Dockerfile
-│   │
-│   ├── frontend/                  # Cloud Run - Streamlit
-│   │   ├── app/
-│   │   │   ├── pages/
-│   │   │   ├── components/
-│   │   │   └── main.py
-│   │   ├── requirements.txt
-│   │   └── Dockerfile
-│   │
-│   └── job-indexer/              # Cloud Run Job - FAISS builder
-│       ├── app/
-│       │   ├── build_index.py
-│       │   ├── services/
-│       │   │   ├── bigquery_reader.py
-│       │   │   ├── embedding_service.py
-│       │   │   ├── faiss_builder.py
-│       │   │   └── gcs_service.py
-│       │   └── utils/
-│       ├── tests/
-│       ├── requirements.txt
-│       └── Dockerfile
-│
-├── shared/                       # Código compartido (NO duplicar lógica)
-│   ├── python/
-│   │   └── miad_rag_common/
-│   │       ├── config/
-│   │       ├── schemas/
-│   │       ├── logging/
-│   │       └── gcp/
-│   └── contracts/
-│       ├── openapi/
-│       ├── jsonschemas/
-│       └── examples/
-│
-├── data/
-│   ├── data_dictionary.md
-│   ├── samples
-│   │   └── real_estate_listings.csv
-│   ├── schemas
-│   │   ├── rag_eval_results_schema.json
-│   │   └── real_estate_listings_schema.json
-│   └── scripts
-│       ├── generate_sample.py
-│       └── load_real_estate_listings.sh
-│
-├── eval/
-│   ├── ragas/
-│   │   ├── datasets/
-│   │   │   ├── test_queries.csv
-│   │   │   └── golden_set.csv
-│   │   ├── notebooks/
-│   │   └── scripts/
-│   └── postman/
-│
-├── figs/
-├── docs/
-│   ├── architecture/
-│   ├── adr/
-│   └── runbooks/
-├── .gitignore
-└── README.md
-```
 
 ## Naming Convention (GCP Resources)
 
@@ -276,6 +165,8 @@ MIAD-RAG-RealEstate/
 
 > La convención de nombres sigue un patrón consistente basado en {organización}-{curso}-{dominio}-{entorno}, facilitando la trazabilidad, escalabilidad y gobierno de los recursos en GCP.
 
+## Google Cloud Platform - GCP
+Este repositorio se complementa con [GoogleCloudPlatformCLI](https://github.com/HubertRonald/GoogleCloudPlatformCLI), para lanzar desde un devcontainer local la instancia que nos permitirá hacer los desarrollos del frontend para conectarse al backend mediante una service account impersonal [Frontend Streamlit - MIAD RAG Real Estate](./apps/frontend/README.md).
 
 ## .gitignore
 
