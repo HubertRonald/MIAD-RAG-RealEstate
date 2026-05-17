@@ -10,22 +10,13 @@ frontend_allowed_members = []
 
 # Usuarios autorizados por IAP
 frontend_iap_members = [
-  "user:hubert.ronald@gmail.com",
-  "user:hrmcanales@gmail.com",
-  "user:paulina.luissi@gmail.com",
-  "user:alebarbosac@gmail.com",
-  "user:jmmarin1@gmail.com"
+  "user:hubert.ronald@gmail.com"
 ]
 
 backend_invoker_members_dev = [
-  "user:hubert.ronald@gmail.com",
-  "user:hrmcanales@gmail.com"
+  "user:hubert.ronald@gmail.com"
 ]
 
 bq_dashboard_viewer_members = [
-  "user:hubert.ronald@gmail.com",
-  "user:hrmcanales@gmail.com",
-  "user:paulina.luissi@gmail.com",
-  "user:alebarbosac@gmail.com",
-  "user:jmmarin1@gmail.com"
+  "user:hubert.ronald@gmail.com"
 ]

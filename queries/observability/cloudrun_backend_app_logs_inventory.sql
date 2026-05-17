@@ -6,8 +6,8 @@ SELECT
   JSON_VALUE(resource.labels.service_name) AS service_name,
   JSON_VALUE(resource.labels.revision_name) AS revision_name,
   text_payload,
-  json_payload,
-  proto_payload
+  TO_JSON_STRING(json_payload) AS json_payload_str,
+  TO_JSON_STRING(proto_payload) AS proto_payload_str
 FROM
   `miad-paad-rs-dev.global._Default._AllLogs`
 WHERE
@@ -25,13 +25,13 @@ WHERE
     OR LOWER(COALESCE(text_payload, "")) LIKE "%retrieval%"
     OR LOWER(COALESCE(text_payload, "")) LIKE "%generation%"
     OR LOWER(COALESCE(text_payload, "")) LIKE "%recommend%"
-    OR LOWER(TO_JSON_STRING(json_payload)) LIKE "%bigquery%"
-    OR LOWER(TO_JSON_STRING(json_payload)) LIKE "%gemini%"
-    OR LOWER(TO_JSON_STRING(json_payload)) LIKE "%faiss%"
-    OR LOWER(TO_JSON_STRING(json_payload)) LIKE "%gcs%"
-    OR LOWER(TO_JSON_STRING(json_payload)) LIKE "%retrieval%"
-    OR LOWER(TO_JSON_STRING(json_payload)) LIKE "%generation%"
-    OR LOWER(TO_JSON_STRING(json_payload)) LIKE "%recommend%"
+    OR LOWER(COALESCE(TO_JSON_STRING(json_payload), "")) LIKE "%bigquery%"
+    OR LOWER(COALESCE(TO_JSON_STRING(json_payload), "")) LIKE "%gemini%"
+    OR LOWER(COALESCE(TO_JSON_STRING(json_payload), "")) LIKE "%faiss%"
+    OR LOWER(COALESCE(TO_JSON_STRING(json_payload), "")) LIKE "%gcs%"
+    OR LOWER(COALESCE(TO_JSON_STRING(json_payload), "")) LIKE "%retrieval%"
+    OR LOWER(COALESCE(TO_JSON_STRING(json_payload), "")) LIKE "%generation%"
+    OR LOWER(COALESCE(TO_JSON_STRING(json_payload), "")) LIKE "%recommend%"
   )
 ORDER BY
   timestamp ASC;

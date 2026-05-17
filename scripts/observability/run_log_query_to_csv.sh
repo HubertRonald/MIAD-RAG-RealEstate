@@ -39,8 +39,14 @@ if bq query \
 else
   echo "ERROR ejecutando query."
   echo
+
   echo "STDERR:"
   cat "${ERR_FILE}" || true
+  echo
+
+  echo "STDOUT:"
+  cat "${TMP_CSV}" || true
+  echo
 
   rm -f "${TMP_CSV}"
   exit 1
